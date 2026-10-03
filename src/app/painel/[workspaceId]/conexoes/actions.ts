@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { exigirDono } from "@/lib/conexoes/acesso";
 import { comTracos, META_GRAPH_URL, soDigitos } from "@/lib/conexoes/config";
-import { cifrar } from "@/lib/cripto";
+import { gravarConexao } from "@/lib/conexoes/segredos";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 const wsSchema = z.uuid();
@@ -50,25 +50,47 @@ export async function salvarGoogle(formData: FormData) {
     redirect(pagina(ws, "erro=conta-de-outro"));
   }
 
-  const { data: atual } = await db
-    .from("conexoes")
-    .select("dados, segredo")
-    .eq("workspace_id", parsed.data.workspaceId)
-    .eq("provedor", "google_ads")
-    .maybeSingle();
-  const agora = new Date().toISOString();
-  const { error } = await db.from("conexoes").upsert({
-    workspace_id: parsed.data.workspaceId,
-    provedor: "google_ads",
-    dados: { ...((atual?.dados as Record<string, unknown>) ?? {}), cliente: conta, gerente: parsed.data.gerente ? comTracos(parsed.data.gerente) : null },
-    segredo: (atual?.segredo as string | null) ?? null,
-    conectado_em: atual?.segredo ? agora : null,
-    atualizado_em: agora,
-    atualizado_por: dono.userId,
+  const { error } = await gravarConexao(db, parsed.data.workspaceId, "google_ads", dono.userId, {
+    dados: { cliente: conta, gerente: parsed.data.gerente ? comTracos(parsed.data.gerente) : null },
   });
   if (error) redirect(pagina(ws, "erro=salvar"));
   revalidatePath(`/painel/${ws}/conexoes`);
   redirect(pagina(ws, "aviso=google-conta"));
+}
+
+const opcional = (re: RegExp) =>
+  z.string().trim().transform((v) => v || undefined).pipe(z.string().regex(re).optional());
+
+const googleAppSchema = z.object({
+  workspaceId: wsSchema,
+  developerToken: opcional(/^[A-Za-z0-9_-]{10,100}$/),
+  clientId: opcional(/^[A-Za-z0-9._-]{10,200}\.apps\.googleusercontent\.com$/),
+  clientSecret: opcional(/^[A-Za-z0-9_-]{10,200}$/),
+});
+
+/** Credenciais do Google (developer token e app OAuth). Campo vazio mantém o valor já salvo. */
+export async function salvarGoogleApp(formData: FormData) {
+  const parsed = googleAppSchema.safeParse({
+    workspaceId: formData.get("workspaceId"),
+    developerToken: formData.get("developerToken") ?? "",
+    clientId: formData.get("clientId") ?? "",
+    clientSecret: formData.get("clientSecret") ?? "",
+  });
+  const ws = String(formData.get("workspaceId"));
+  if (!parsed.success) redirect(pagina(ws, "erro=google-app-dados"));
+  const dono = await exigirDono(parsed.data.workspaceId);
+  if (!dono) redirect(pagina(ws, "erro=so-dono"));
+
+  const { error } = await gravarConexao(createAdminClient(), parsed.data.workspaceId, "google_ads", dono.userId, {
+    segredos: {
+      developer_token: parsed.data.developerToken,
+      client_id: parsed.data.clientId,
+      client_secret: parsed.data.clientSecret,
+    },
+  });
+  if (error) redirect(pagina(ws, "erro=salvar"));
+  revalidatePath(`/painel/${ws}/conexoes`);
+  redirect(pagina(ws, "aviso=google-app"));
 }
 
 const metaSchema = z.object({
@@ -101,15 +123,9 @@ export async function salvarMeta(formData: FormData) {
   if (!(await registrarConta(db, parsed.data.workspaceId, "facebook", conta, info.name ?? null))) {
     redirect(pagina(ws, "erro=conta-de-outro"));
   }
-  const agora = new Date().toISOString();
-  const { error } = await db.from("conexoes").upsert({
-    workspace_id: parsed.data.workspaceId,
-    provedor: "meta",
-    dados: { conta, nome: info.name, moeda: info.currency ?? null, validado_em: agora },
-    segredo: cifrar({ token: parsed.data.token }),
-    conectado_em: agora,
-    atualizado_em: agora,
-    atualizado_por: dono.userId,
+  const { error } = await gravarConexao(db, parsed.data.workspaceId, "meta", dono.userId, {
+    dados: { conta, nome: info.name, moeda: info.currency ?? null, validado_em: new Date().toISOString() },
+    segredos: { token: parsed.data.token },
   });
   if (error) redirect(pagina(ws, "erro=salvar"));
   revalidatePath(`/painel/${ws}/conexoes`);

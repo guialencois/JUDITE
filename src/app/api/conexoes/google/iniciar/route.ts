@@ -9,6 +9,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { exigirDono } from "@/lib/conexoes/acesso";
 import { GOOGLE_AUTH_URL, GOOGLE_ESCOPO, googleRetorno, urlDoSite } from "@/lib/conexoes/config";
+import { lerConexao } from "@/lib/conexoes/segredos";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
@@ -21,8 +23,9 @@ export async function GET(req: NextRequest) {
     NextResponse.redirect(new URL(`/painel/${workspaceId}/conexoes?erro=${erro}`, req.url));
 
   if (!(await exigirDono(workspaceId))) return voltar("so-dono");
-  const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
-  if (!clientId || !process.env.GOOGLE_OAUTH_CLIENT_SECRET) return voltar("google-app");
+  const { segredos } = await lerConexao(createAdminClient(), workspaceId, "google_ads");
+  const clientId = segredos.client_id;
+  if (!clientId || !segredos.client_secret) return voltar("google-app");
 
   const state = randomBytes(24).toString("base64url");
   const site = await urlDoSite();

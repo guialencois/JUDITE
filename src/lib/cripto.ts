@@ -1,16 +1,23 @@
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from "node:crypto";
 
 /**
- * Criptografia dos tokens das conexões (AES-256-GCM).
- * A chave fica só no servidor, na variável JUDITE_CHAVE_CRIPTO (32 bytes em base64).
- * Mesmo que alguém copie o banco, os tokens não servem sem essa chave.
+ * Criptografia dos tokens das conexões (AES-256-GCM), só no servidor.
+ *
+ * A chave é derivada automaticamente da chave mestra do Supabase (SUPABASE_SERVICE_ROLE_KEY),
+ * que já existe no servidor; não é preciso configurar nada a mais.
+ * Opcional: JUDITE_CHAVE_CRIPTO (32 bytes em base64) para usar uma chave própria.
+ * Atenção: se a chave mestra do Supabase for trocada, as conexões precisam ser refeitas.
  */
 function chave(): Buffer {
-  const b64 = process.env.JUDITE_CHAVE_CRIPTO;
-  if (!b64) throw new Error("Falta JUDITE_CHAVE_CRIPTO (.env.local e Vercel).");
-  const k = Buffer.from(b64, "base64");
-  if (k.length !== 32) throw new Error("JUDITE_CHAVE_CRIPTO precisa ter 32 bytes em base64.");
-  return k;
+  const propria = process.env.JUDITE_CHAVE_CRIPTO;
+  if (propria) {
+    const k = Buffer.from(propria, "base64");
+    if (k.length !== 32) throw new Error("JUDITE_CHAVE_CRIPTO precisa ter 32 bytes em base64.");
+    return k;
+  }
+  const mestra = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!mestra) throw new Error("Falta SUPABASE_SERVICE_ROLE_KEY (.env.local e Vercel).");
+  return Buffer.from(hkdfSync("sha256", mestra, "judite", "judite-conexoes-v1", 32));
 }
 
 export function cifrar(dados: Record<string, string>): string {

@@ -3,16 +3,17 @@
  * e formulários (só o dono). Os tokens nunca aparecem na tela depois de salvos.
  */
 
-import { googleAppConfigurado, googleRetorno, urlDoSite } from "@/lib/conexoes/config";
+import { googleRetorno, urlDoSite } from "@/lib/conexoes/config";
 import { criptoConfigurada } from "@/lib/cripto";
 import { carregarWorkspace } from "../carregar";
-import { desconectar, salvarGoogle, salvarMeta } from "./actions";
+import { desconectar, salvarGoogle, salvarGoogleApp, salvarMeta } from "./actions";
 
 export const dynamic = "force-dynamic";
 
 const ERROS: Record<string, string> = {
   "so-dono": "Só o dono do workspace pode mexer nas conexões.",
-  "google-app": "Faltam as chaves do app Google no servidor (veja a Parte A do Google Ads).",
+  "google-app": "Salve primeiro o ID do cliente OAuth e a chave secreta do app Google (Parte B).",
+  "google-app-dados": "Confira os valores: o ID do cliente OAuth termina em .apps.googleusercontent.com.",
   "google-state": "A autorização do Google não pôde ser confirmada. Tente de novo.",
   "google-cancelado": "A autorização no Google foi cancelada.",
   "google-token": "O Google não devolveu o acesso permanente. Tente de novo; se repetir, remova o acesso da JUDITE em myaccount.google.com/permissions e conecte outra vez.",
@@ -23,6 +24,7 @@ const ERROS: Record<string, string> = {
   salvar: "Não foi possível salvar. Tente de novo.",
 };
 const AVISOS: Record<string, string> = {
+  "google-app": "Credenciais do Google salvas (criptografadas).",
   "google-autorizado": "Google autorizado. Agora informe o ID do cliente, se ainda não informou.",
   "google-conta": "ID do cliente do Google Ads salvo.",
   "meta-conectada": "Meta Ads conectada e testada com sucesso.",
@@ -56,10 +58,13 @@ export default async function ConexoesPage(props: PageProps<"/painel/[workspaceI
     .eq("workspace_id", workspace.id);
   const google = linhas?.find((l) => l.provedor === "google_ads");
   const meta = linhas?.find((l) => l.provedor === "meta");
-  const gDados = (google?.dados ?? {}) as { cliente?: string; gerente?: string | null; autorizado_em?: string };
+  const gDados = (google?.dados ?? {}) as {
+    cliente?: string; gerente?: string | null;
+    tem_developer_token?: boolean; tem_app_oauth?: boolean; tem_autorizacao?: boolean;
+  };
   const mDados = (meta?.dados ?? {}) as { conta?: string; nome?: string; validado_em?: string };
 
-  const app = googleAppConfigurado();
+  const app = { developerToken: Boolean(gDados.tem_developer_token), oauth: Boolean(gDados.tem_app_oauth) };
   const cripto = criptoConfigurada();
   const site = await urlDoSite();
   const retorno = googleRetorno(site);
@@ -79,26 +84,10 @@ export default async function ConexoesPage(props: PageProps<"/painel/[workspaceI
 
       {!cripto && (
         <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
-          Antes de tudo: falta a chave de criptografia <code className={codigo}>JUDITE_CHAVE_CRIPTO</code> no servidor.
-          Sem ela, a JUDITE não guarda nenhum token. Veja o passo 0 abaixo.
+          O servidor ainda não tem a chave mestra do Supabase (<code className={codigo}>SUPABASE_SERVICE_ROLE_KEY</code>).
+          Sem ela, a JUDITE não consegue guardar tokens com segurança. Cadastre-a na Vercel e no .env.local.
         </p>
       )}
-
-      {/* ------------------------------------------------------------ PASSO 0 */}
-      <details className="rounded-xl border border-zinc-800 p-4" open={!cripto}>
-        <summary className="cursor-pointer font-medium">0. Chave de criptografia (uma vez só)</summary>
-        <ol className="mt-3 list-decimal space-y-3 pl-5">
-          <li className={passo}>
-            No <strong>PowerShell</strong>, gere uma chave aleatória:
-            <pre className="mt-1 overflow-x-auto rounded-lg bg-zinc-900 p-3 font-mono text-xs text-amber-300">$b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); [Convert]::ToBase64String($b)</pre>
-          </li>
-          <li className={passo}>
-            Copie o resultado e adicione no arquivo <code className={codigo}>.env.local</code> e na <strong>Vercel</strong>
-            {" "}(Settings → Environment Variables) com o nome <code className={codigo}>JUDITE_CHAVE_CRIPTO</code>.
-          </li>
-          <li className={passo}>Não troque essa chave depois: os tokens salvos com ela deixariam de abrir.</li>
-        </ol>
-      </details>
 
       {/* ------------------------------------------------------------ GOOGLE */}
       <section className="space-y-4 rounded-xl border border-zinc-800 p-4">
@@ -107,7 +96,7 @@ export default async function ConexoesPage(props: PageProps<"/painel/[workspaceI
           <div className="flex flex-wrap gap-2">
             <Selo ok={app.developerToken} sim="developer token" nao="developer token" />
             <Selo ok={app.oauth} sim="app OAuth" nao="app OAuth" />
-            <Selo ok={Boolean(gDados.autorizado_em)} sim="conta autorizada" nao="conta autorizada" />
+            <Selo ok={Boolean(gDados.tem_autorizacao)} sim="conta autorizada" nao="conta autorizada" />
             <Selo ok={Boolean(gDados.cliente)} sim={"cliente " + (gDados.cliente ?? "")} nao="ID do cliente" />
           </div>
         </div>
@@ -127,10 +116,7 @@ export default async function ConexoesPage(props: PageProps<"/painel/[workspaceI
               Preencha o formulário e aceite os termos. Você recebe um <strong>developer token</strong> com acesso de teste; peça o
               {" "}<strong>Acesso básico</strong> no mesmo lugar para usar com contas reais. A aprovação pode levar de dias a semanas.
             </li>
-            <li className={passo}>
-              Quando chegar, coloque no <code className={codigo}>.env.local</code> e na Vercel como
-              {" "}<code className={codigo}>GOOGLE_ADS_DEVELOPER_TOKEN</code>.
-            </li>
+            <li className={passo}>Quando chegar, cole o developer token no formulário logo abaixo da Parte B.</li>
           </ol>
         </details>
 
@@ -156,13 +142,29 @@ export default async function ConexoesPage(props: PageProps<"/painel/[workspaceI
                 {" "}<code className={codigo}>http://localhost:3000/api/conexoes/google/callback</code>.
               </span>
             </li>
-            <li className={passo}>
-              Copie o <strong>ID do cliente</strong> e a <strong>Chave secreta</strong> para o <code className={codigo}>.env.local</code> e a Vercel como
-              {" "}<code className={codigo}>GOOGLE_OAUTH_CLIENT_ID</code> e <code className={codigo}>GOOGLE_OAUTH_CLIENT_SECRET</code>.
-              Defina também <code className={codigo}>SITE_URL</code> com o endereço do site (sem barra no final).
-            </li>
+            <li className={passo}>Copie o <strong>ID do cliente</strong> e a <strong>Chave secreta</strong> e cole no formulário abaixo.</li>
           </ol>
         </details>
+
+        {dono && cripto && (
+          <form action={salvarGoogleApp} className="space-y-2 rounded-lg border border-zinc-800 p-3">
+            <input type="hidden" name="workspaceId" value={workspace.id} />
+            <p className="text-sm font-medium">Credenciais do Google (Partes A e B)</p>
+            <p className="text-xs text-zinc-500">Ficam criptografadas e nunca são mostradas de novo. Deixe um campo vazio para manter o valor já salvo.</p>
+            <div className="grid gap-2 sm:grid-cols-3">
+              <label className="text-xs text-zinc-400">Developer token
+                <input name="developerToken" type="password" autoComplete="off" placeholder={app.developerToken ? "•••••• salvo" : ""} className={campo} />
+              </label>
+              <label className="text-xs text-zinc-400">ID do cliente OAuth
+                <input name="clientId" type="password" autoComplete="off" placeholder={app.oauth ? "•••••• salvo" : "….apps.googleusercontent.com"} className={campo} />
+              </label>
+              <label className="text-xs text-zinc-400">Chave secreta do cliente
+                <input name="clientSecret" type="password" autoComplete="off" placeholder={app.oauth ? "•••••• salvo" : ""} className={campo} />
+              </label>
+            </div>
+            <button className={botao}>Salvar credenciais</button>
+          </form>
+        )}
 
         <div className="space-y-3 rounded-lg bg-zinc-900/60 p-3">
           <p className="text-sm font-medium">Parte C — Conectar a conta deste workspace</p>
@@ -171,10 +173,10 @@ export default async function ConexoesPage(props: PageProps<"/painel/[workspaceI
               Clique em <strong>Autorizar no Google</strong> e entre com o e-mail que administra os anúncios.
               {dono && app.oauth && cripto && (
                 <a href={`/api/conexoes/google/iniciar?workspaceId=${workspace.id}`} className={botao + " ml-2 inline-block"}>
-                  {gDados.autorizado_em ? "Autorizar de novo" : "Autorizar no Google"}
+                  {gDados.tem_autorizacao ? "Autorizar de novo" : "Autorizar no Google"}
                 </a>
               )}
-              {!(app.oauth && cripto) && <span className="block text-xs text-zinc-500">Disponível depois do passo 0 e das Partes A e B.</span>}
+              {!(app.oauth && cripto) && <span className="block text-xs text-zinc-500">Disponível depois de salvar as credenciais da Parte B.</span>}
             </li>
             <li className={passo}>
               Informe o <strong>ID do cliente</strong> (aparece no topo do Google Ads, ex.: 411-071-3742). Se a conta for gerenciada por uma

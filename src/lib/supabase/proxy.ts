@@ -4,7 +4,7 @@ import { supabasePublishableKey, supabaseUrl } from "@/lib/env";
 
 // Rotas que não passam pelo redirecionamento para /login.
 // As rotas /api conferem o acesso sozinhas (sessão ou segredo do cron) e respondem 401.
-const PUBLIC_PATHS = ["/", "/login", "/auth", "/api"];
+const PUBLIC_PATHS = ["/", "/login", "/auth", "/api", "/j.js"];
 
 function isPublic(pathname: string) {
   return PUBLIC_PATHS.some(
