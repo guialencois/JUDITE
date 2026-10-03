@@ -3,7 +3,9 @@ import { login, signup } from "./actions";
 const ERROS: Record<string, string> = {
   dados: "Confira o e-mail e use uma senha com pelo menos 8 caracteres.",
   credenciais: "E-mail ou senha incorretos.",
-  cadastro: "Não foi possível criar a conta. Tente novamente em alguns minutos.",
+  cadastro: "Não foi possível criar a conta. A JUDITE funciona só por convite: confira se este e-mail foi convidado.",
+  "nao-confirmado": "Confirme seu e-mail antes de entrar: abra o link que enviamos (veja também o spam).",
+  aguarde: "Muitas tentativas seguidas. Aguarde um minuto e tente de novo.",
   confirmacao: "O link de confirmação é inválido ou expirou.",
 };
 
@@ -61,6 +63,9 @@ export default async function LoginPage(props: PageProps<"/login">) {
             Criar conta
           </button>
         </div>
+        <p className="text-xs text-zinc-500">
+          Recebeu um convite? Use o e-mail convidado, escolha uma senha e clique em Criar conta.
+        </p>
       </form>
     </main>
   );

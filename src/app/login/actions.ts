@@ -24,8 +24,12 @@ export async function login(formData: FormData) {
   const supabase = await createClient();
   const { error } = await supabase.auth.signInWithPassword(parsed.data);
 
-  // Mensagem genérica: não revela se o e-mail existe ou não.
-  if (error) redirect("/login?erro=credenciais");
+  if (error) {
+    if (error.code === "email_not_confirmed") redirect("/login?erro=nao-confirmado");
+    if (error.status === 429) redirect("/login?erro=aguarde");
+    // Mensagem genérica: não revela se o e-mail existe ou não.
+    redirect("/login?erro=credenciais");
+  }
 
   redirect("/painel");
 }
@@ -41,7 +45,11 @@ export async function signup(formData: FormData) {
     options: { emailRedirectTo: `${origin}/auth/confirm` },
   });
 
-  if (error) redirect("/login?erro=cadastro");
+  if (error) {
+    if (error.status === 429) redirect("/login?erro=aguarde");
+    // Sem convite o próprio banco recusa o cadastro.
+    redirect("/login?erro=cadastro");
+  }
 
   redirect("/login?aviso=confirme-email");
 }

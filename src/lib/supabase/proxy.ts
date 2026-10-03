@@ -2,8 +2,9 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { supabasePublishableKey, supabaseUrl } from "@/lib/env";
 
-// Rotas que qualquer pessoa pode abrir sem login.
-const PUBLIC_PATHS = ["/", "/login", "/auth"];
+// Rotas que não passam pelo redirecionamento para /login.
+// As rotas /api conferem o acesso sozinhas (sessão ou segredo do cron) e respondem 401.
+const PUBLIC_PATHS = ["/", "/login", "/auth", "/api"];
 
 function isPublic(pathname: string) {
   return PUBLIC_PATHS.some(

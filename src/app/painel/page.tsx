@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createWorkspace, signOut } from "./actions";
@@ -41,7 +42,11 @@ export default async function PainelPage(props: PageProps<"/painel">) {
         {workspaces && workspaces.length > 0 ? (
           <ul className="divide-y divide-zinc-200 rounded-md border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
             {workspaces.map((w) => (
-              <li key={w.id} className="px-4 py-3">{w.name}</li>
+              <li key={w.id}>
+                <Link href={`/painel/${w.id}`} className="block px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-900">
+                  {w.name}
+                </Link>
+              </li>
             ))}
           </ul>
         ) : (
