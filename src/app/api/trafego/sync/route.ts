@@ -18,10 +18,12 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 
 const LOTE = 500;
+/** Intervalo mínimo entre sincronizações pelo botão, para não gastar a cota do provedor. */
+const INTERVALO_MINIMO_MS = 5 * 60 * 1000;
 
 const corpoSchema = z.object({
   workspaceId: z.uuid(),
-  dias: z.number().int().min(1).max(90).default(60),
+  dias: z.number().int().min(1).max(60).default(60),
 });
 
 type Admin = ReturnType<typeof createAdminClient>;
@@ -139,7 +141,19 @@ export async function POST(req: Request) {
   if (!acesso) {
     return NextResponse.json({ erro: "Não autorizado." }, { status: 401 });
   }
-  const resultado = await sincronizarWorkspace(createAdminClient(), parsed.data.workspaceId, parsed.data.dias);
+  const db = createAdminClient();
+  const { data: ultima } = await db
+    .from("trafego_sincronizacoes")
+    .select("iniciado_em")
+    .eq("workspace_id", parsed.data.workspaceId)
+    .order("iniciado_em", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (ultima && Date.now() - new Date(ultima.iniciado_em as string).getTime() < INTERVALO_MINIMO_MS) {
+    return NextResponse.json({ erro: "Sincronizado há pouco. Aguarde 5 minutos para sincronizar de novo." }, { status: 429 });
+  }
+
+  const resultado = await sincronizarWorkspace(db, parsed.data.workspaceId, parsed.data.dias);
   const houveErro = resultado.resumo.some((r) => "erro" in r);
   return NextResponse.json(resultado, { status: houveErro ? 207 : 200 });
 }

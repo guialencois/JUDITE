@@ -103,7 +103,7 @@ export default async function WorkspacePage(props: PageProps<"/painel/[workspace
                 <span className="block">Papel</span>
                 <select name="role" defaultValue="member" className={campo}>
                   <option value="member">Membro (só vê)</option>
-                  <option value="admin">Admin (pode mudar campanhas)</option>
+                  {papel === "owner" && <option value="admin">Admin (pode mudar campanhas)</option>}
                 </select>
               </label>
               <button className={botao}>Convidar</button>

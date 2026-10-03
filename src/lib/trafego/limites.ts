@@ -36,7 +36,12 @@ export function validarOrcamento(e: EntradaOrcamento): Checagem {
       motivo: "Acima do teto de R$ " + e.maxSemAprovacao + " por dia que a JUDITE muda sozinha." };
   }
   const limitePercent = e.aumentoMaxPercent ?? 50;
-  if (e.atualReais && e.atualReais > 0 && novo > e.atualReais * (1 + limitePercent / 100)) {
+  // Sem saber o orçamento atual não dá para medir o aumento: pede confirmação humana.
+  if (e.atualReais === null || !(e.atualReais > 0)) {
+    return { ok: true, precisaAprovacao: true, valorFinal: novo,
+      motivo: "O orçamento atual desta campanha é desconhecido; sincronize os dados ou confirme o novo valor." };
+  }
+  if (novo > e.atualReais * (1 + limitePercent / 100)) {
     return { ok: true, precisaAprovacao: true, valorFinal: novo,
       motivo: "Aumento maior que " + limitePercent + "% de uma vez." };
   }

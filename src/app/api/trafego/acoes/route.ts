@@ -24,7 +24,8 @@ const corpoSchema = z.object({
   workspaceId: z.uuid(),
   origem: z.enum(["painel", "automacao"]).default("painel"),
   plataforma: z.enum(["google_ads", "facebook"]),
-  tipoEntidade: z.enum(["campanha", "conjunto", "anuncio"]).default("campanha"),
+  // Por enquanto só campanhas: elas são as únicas que a JUDITE sabe a que workspace pertencem.
+  tipoEntidade: z.literal("campanha").default("campanha"),
   entidadeId: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/),
   entidadeNome: z.string().max(200).optional(),
   acao: z.enum(["pausar", "ativar", "definir_orcamento"]),
@@ -51,10 +52,6 @@ export async function POST(req: Request) {
     }
     usuarioId = acesso.userId;
   }
-  if (p.acao === "definir_orcamento" && p.tipoEntidade !== "campanha") {
-    return NextResponse.json({ erro: "Orçamento só pode ser definido na campanha." }, { status: 400 });
-  }
-
   const db = createAdminClient();
   const comecou = Date.now();
 
@@ -66,23 +63,14 @@ export async function POST(req: Request) {
     .eq("campanha_id", p.entidadeId)
     .maybeSingle();
 
-  let conta = campanha?.conta_externa as string | undefined;
-  if (!conta) {
-    const { data: c } = await db
-      .from("trafego_contas")
-      .select("conta_externa")
-      .eq("workspace_id", p.workspaceId)
-      .eq("plataforma", p.plataforma)
-      .eq("ativo", true)
-      .limit(1)
-      .maybeSingle();
-    conta = c?.conta_externa as string | undefined;
+  // A campanha precisa ser deste workspace (gravada pela sincronização).
+  // Assim ninguém age em uma campanha de outra conta só sabendo o ID dela.
+  if (!campanha) {
+    return NextResponse.json({ erro: "Campanha não encontrada neste workspace. Sincronize os dados primeiro." }, { status: 404 });
   }
-  if (!conta) {
-    return NextResponse.json({ erro: "Este workspace não tem conta dessa plataforma. Sincronize primeiro." }, { status: 400 });
-  }
+  const conta = campanha.conta_externa as string;
 
-  const nome = p.entidadeNome ?? (campanha?.nome as string | undefined) ?? p.entidadeId;
+  const nome = p.entidadeNome ?? (campanha.nome as string | undefined) ?? p.entidadeId;
   const base = {
     workspace_id: p.workspaceId, usuario_id: usuarioId, origem: p.origem, plataforma: p.plataforma,
     tipo_entidade: p.tipoEntidade, entidade_id: p.entidadeId, entidade_nome: nome, acao: p.acao,
@@ -94,7 +82,7 @@ export async function POST(req: Request) {
 
   if (p.acao === "pausar" || p.acao === "ativar") {
     acao = { tipo: p.acao, plataforma: p.plataforma, conta, entidade: p.tipoEntidade, entidadeId: p.entidadeId };
-    antes = (campanha?.status as string | null) ?? null;
+    antes = (campanha.status as string | null) ?? null;
     depois = p.acao === "ativar" ? "ENABLED" : "PAUSED";
   } else {
     const { data: cfg } = await db.from("trafego_config").select("chave, valor").eq("workspace_id", p.workspaceId);
@@ -102,7 +90,7 @@ export async function POST(req: Request) {
       const n = Number(cfg?.find((c) => c.chave === k)?.valor);
       return Number.isFinite(n) ? n : padrao;
     };
-    const atual = campanha?.orcamento_diario === null || campanha?.orcamento_diario === undefined
+    const atual = campanha.orcamento_diario === null || campanha.orcamento_diario === undefined
       ? null : Number(campanha.orcamento_diario);
     const checagem = validarOrcamento({
       atualReais: atual,
