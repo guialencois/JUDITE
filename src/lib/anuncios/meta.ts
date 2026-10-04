@@ -12,8 +12,8 @@
 
 import { META_GRAPH_URL, META_VERSAO } from "@/lib/conexoes/config";
 import type { AcaoAnuncio, LinhaCampanha, LinhaMetrica } from "@/lib/trafego/tipos";
-import { numero, pedirJson, texto } from "./http";
-import type { Periodo, ProvedorAnuncios } from "./provedor";
+import { ErroProvedor, numero, pedirJson, texto } from "./http";
+import type { NovaCampanha, Periodo, ProvedorAnuncios } from "./provedor";
 
 const BASE = `${META_GRAPH_URL}/${META_VERSAO}`;
 /** Trava de segurança contra paginação sem fim. */
@@ -95,6 +95,26 @@ export function campanhaDaMeta(linha: Linha, contaExterna: string, moeda: string
   };
 }
 
+/** Objetivos da Meta (API de resultados, "OUTCOME_*"). */
+const OBJETIVO_META: Record<NovaCampanha["objetivo"], string> = {
+  trafego: "OUTCOME_TRAFFIC",
+  mensagens: "OUTCOME_ENGAGEMENT",
+  conversoes: "OUTCOME_SALES",
+  reconhecimento: "OUTCOME_AWARENESS",
+};
+
+/** Campos enviados para criar a campanha na Meta. Exportada para os testes: o status é sempre PAUSED. */
+export function camposNovaCampanhaMeta(c: NovaCampanha): Record<string, string> {
+  return {
+    name: c.nome,
+    objective: OBJETIVO_META[c.objetivo],
+    status: "PAUSED",
+    special_ad_categories: "[]",
+    daily_budget: String(Math.round(c.orcamentoDiarioReais * 100)),
+    bid_strategy: "LOWEST_COST_WITHOUT_CAP",
+  };
+}
+
 export function provedorMeta(cred: { token: string; moeda?: string | null }): ProvedorAnuncios {
   const cabecalhos = { Authorization: `Bearer ${cred.token}` };
 
@@ -162,6 +182,16 @@ export function provedorMeta(cred: { token: string; moeda?: string | null }): Pr
         return alterar(acao.campanhaId, { daily_budget: String(Math.round(acao.valorReais * 100)) });
       }
       return alterar(acao.entidadeId, { status: acao.tipo === "ativar" ? "ACTIVE" : "PAUSED" });
+    },
+
+    async criarCampanhaPausada(c: NovaCampanha) {
+      const json = (await pedirJson("A Meta", `${BASE}/${contaMeta(c.conta)}/campaigns`, {
+        method: "POST",
+        headers: { ...cabecalhos, "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams(camposNovaCampanhaMeta(c)),
+      }, erroDaMeta)) as { id?: string } | null;
+      if (!json?.id) throw new ErroProvedor("A Meta não devolveu o ID da campanha criada.");
+      return { campanhaId: String(json.id) };
     },
   };
 }

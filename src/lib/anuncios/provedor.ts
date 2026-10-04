@@ -21,6 +21,14 @@ type Admin = ReturnType<typeof createAdminClient>;
 
 export type Periodo = { plataforma: Plataforma; contas: string[]; de: string; ate: string };
 
+/** Pedido de criação de campanha (Campaign Manager). A campanha SEMPRE nasce pausada. */
+export type NovaCampanha = {
+  conta: string;
+  nome: string;
+  objetivo: "trafego" | "mensagens" | "conversoes" | "reconhecimento";
+  orcamentoDiarioReais: number;
+};
+
 export interface ProvedorAnuncios {
   nome: string;
   /** Como a plataforma chama uma campanha ligada e uma pausada (para gravar o estado depois de uma ação). */
@@ -32,6 +40,12 @@ export interface ProvedorAnuncios {
   lerCampanhas(p: Periodo): Promise<LinhaCampanha[]>;
   /** Aplica uma mudança de verdade na conta. Chamar só depois dos freios de limites.ts. */
   executar(acao: AcaoAnuncio): Promise<unknown>;
+  /**
+   * Cria só a "casca" da campanha (nome, objetivo, orçamento), PAUSADA. Conjuntos de anúncios e
+   * anúncios são finalizados na plataforma. Opcional: nem toda plataforma tem isso pela JUDITE ainda.
+   * Chamar só depois da aprovação do dono (src/lib/campanhas/publicar.ts).
+   */
+  criarCampanhaPausada?(c: NovaCampanha): Promise<{ campanhaId: string }>;
 }
 
 export type Resolucao = { ok: true; provedor: ProvedorAnuncios } | { ok: false; motivo: string };

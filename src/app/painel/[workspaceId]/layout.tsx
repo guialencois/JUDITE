@@ -20,6 +20,7 @@ export default async function WorkspaceLayout(props: LayoutProps<"/painel/[works
           <Link href={`${base}/comercial`} className="text-zinc-400 hover:text-amber-400">Comercial</Link>
           <Link href={`${base}/presenca`} className="text-zinc-400 hover:text-amber-400">Presença no Google</Link>
           <Link href={`${base}/criativos`} className="text-zinc-400 hover:text-amber-400">Creative Studio</Link>
+          <Link href={`${base}/campanhas`} className="text-zinc-400 hover:text-amber-400">Campanhas</Link>
           <Link href={`${base}/conexoes`} className="text-zinc-400 hover:text-amber-400">Conexões</Link>
         </div>
       </nav>

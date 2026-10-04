@@ -15,7 +15,7 @@
 import { TIKTOK_API_URL } from "@/lib/conexoes/config";
 import type { AcaoAnuncio, LinhaCampanha, LinhaMetrica } from "@/lib/trafego/tipos";
 import { ErroProvedor, numero, pedirJson, texto } from "./http";
-import type { Periodo, ProvedorAnuncios } from "./provedor";
+import type { NovaCampanha, Periodo, ProvedorAnuncios } from "./provedor";
 
 const MAX_PAGINAS = 50;
 /** O relatório diário do TikTok aceita no máximo 30 dias por pedido. */
@@ -91,6 +91,27 @@ export function campanhaDoTikTok(linha: Linha, contaExterna: string, moeda: stri
     // Só é "orçamento diário" quando a campanha usa verba por dia; verba total ou sem limite fica vazia.
     orcamentoDiario: modo === "BUDGET_MODE_DAY" && verba !== null && verba > 0 ? verba : null,
     moeda,
+  };
+}
+
+/** Objetivos do TikTok. "mensagens" não tem equivalente direto pela API: fica de fora. */
+const OBJETIVO_TIKTOK: Partial<Record<NovaCampanha["objetivo"], string>> = {
+  trafego: "TRAFFIC",
+  conversoes: "WEB_CONVERSIONS",
+  reconhecimento: "REACH",
+};
+
+/** Corpo enviado para criar a campanha no TikTok. Exportada para os testes: nasce sempre DISABLE (pausada). */
+export function corpoNovaCampanhaTikTok(c: NovaCampanha): Record<string, unknown> {
+  const objetivo = OBJETIVO_TIKTOK[c.objetivo];
+  if (!objetivo) throw new ErroProvedor("O TikTok não tem campanha de mensagens pela JUDITE. Escolha outro objetivo ou crie na plataforma.");
+  return {
+    advertiser_id: c.conta,
+    campaign_name: c.nome,
+    objective_type: objetivo,
+    budget_mode: "BUDGET_MODE_DAY",
+    budget: Math.round(c.orcamentoDiarioReais * 100) / 100,
+    operation_status: "DISABLE",
   };
 }
 
@@ -172,6 +193,13 @@ export function provedorTikTok(cred: { token: string; moeda?: string | null }): 
         return escrever("ad/status/update/", { advertiser_id: acao.conta, ad_ids: [acao.entidadeId], operation_status });
       }
       throw new ErroProvedor("Ação não suportada no TikTok.");
+    },
+
+    async criarCampanhaPausada(c: NovaCampanha) {
+      const json = (await escrever("campaign/create/", corpoNovaCampanhaTikTok(c))) as { data?: { campaign_id?: string | number } } | null;
+      const id = json?.data?.campaign_id;
+      if (!id) throw new ErroProvedor("O TikTok não devolveu o ID da campanha criada.");
+      return { campanhaId: String(id) };
     },
   };
 }

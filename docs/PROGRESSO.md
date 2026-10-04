@@ -190,3 +190,29 @@ arquivos principais, decisões tomadas sozinho e o que o Jackson precisa testar.
 1. Aplicar a migração da Etapa 8. Creative Studio → cadastrar um produto com preço e fatos.
 2. Com `ANTHROPIC_API_KEY`: "Gerar variações" → conferir que nenhum texto traz preço ou número que você não cadastrou.
 3. Registrar um experimento com dois criativos, concluir com resultados e ver a conclusão aparecer em Aprendizados.
+
+### Etapa 9 — Campaign Manager (04/10/2026)
+
+**O que mudei**
+- Página **Campanhas** (link no menu): "Pedir um rascunho ao Diretor" (IA) ou "Montar um rascunho à mão"; lista de rascunhos com os avisos dos freios; botões do dono: **Aprovar**, **Recusar** e, depois, **Aprovar ativação**.
+- Fluxo: rascunho (`aguardando_aprovacao`) → o **dono** aprova → campanha criada **PAUSADA** (`publicada_pausada`) → ativar é **outra aprovação** do dono (`ativa`).
+- `src/lib/campanhas/`: `rascunho.ts` (schema e conferência pelos freios: teto diário, orçamento do mês, criativos válidos), `diretor.ts` (a IA monta o rascunho com os dados reais, o produto e os criativos salvos; tudo passa pelo mesmo schema), `publicar.ts` (publicação pausada e ativação).
+- Provedores: novo método opcional `criarCampanhaPausada` na **Meta** (`status=PAUSED`) e no **TikTok** (`operation_status=DISABLE`).
+- **Tudo registrado em `trafego_acoes`**: o rascunho (`criar_campanha_pausada`, `aguardando_aprovacao`), a criação (`aplicada` ou `erro`) e a ativação.
+- Migração `20261004060000_etapa9_campaign_manager.sql` (**não aplicada**): tabela `campanha_rascunhos` com RLS.
+- Variável nova `JUDITE_PUBLICACAO_REAL`.
+- Testes em `src/lib/campanhas/rascunho.test.ts` (inclui "a campanha é sempre criada pausada").
+
+**Decisões tomadas sozinho**
+- **Modo simulado é o padrão.** Sem `JUDITE_PUBLICACAO_REAL=1` no servidor, aprovar e ativar acontecem só dentro da JUDITE (marcado como SIMULADA na tela e no histórico) e nenhuma API de plataforma é chamada. É assim que o fluxo deve ser testado amanhã.
+- **Só o dono** aprova, recusa e ativa (admin monta o rascunho).
+- No modo real, a JUDITE cria só a "casca" da campanha (nome, objetivo, orçamento), pausada. **Conjunto de anúncios (público) e anúncios (criativos) são finalizados na plataforma**, seguindo o rascunho. Criar conjuntos e anúncios pela API exige página, pixel e mídia, e eu não quis inventar esses campos.
+- **Google Ads não tem criação por aqui** nesta versão: a API exige vários campos obrigatórios que mudam entre versões e não pude confirmar. A tela diz isso e o rascunho serve de roteiro.
+- No modo real, a campanha criada entra no Gerenciador como pausada, e a ativação passa pelo mesmo `executarAcao` (freios do mês + histórico) das outras campanhas.
+- Não chamei nenhuma API de plataforma. O modo real **não foi testado**.
+
+**Como testar (modo simulado)**
+1. Aplicar as migrações das Etapas 8 e 9.
+2. Campanhas → "Montar um rascunho à mão" → salvar. Deve aparecer "aguardando aprovação" e, se o orçamento passar dos limites, os avisos em amarelo.
+3. Como dono: "Aprovar (simulado)" → vira "criada e pausada · SIMULADA". Depois "Aprovar ativação (simulado)" → "ativa · SIMULADA".
+4. Gerenciador → Histórico de ações: as três linhas aparecem (rascunho, criação e ativação), marcadas como SIMULAÇÃO.
