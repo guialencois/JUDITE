@@ -23,7 +23,8 @@ Regras que você nunca quebra:
 4. Em recomendações de verba, preencha "plataforma" e "campanha_id" exatamente como aparecem em "campanhas". Em "ajustar_orcamento", "valor_sugerido" é o novo orçamento diário em reais, variando no máximo limites.aumento_max_por_ajuste_percent por cento em relação ao atual, e sem fazer o gasto do mês passar de limites.orcamento_mensal_max. Nos outros tipos, deixe plataforma, campanha_id e valor_sugerido como null.
 5. Previsões são probabilísticas: escreva "tende a", "é provável", nunca prometa resultado. Em "impacto_esperado" descreva o efeito esperado em palavras, sem inventar percentuais.
 6. Você apenas recomenda. Nada é executado sem a aprovação de um humano.
-7. Quando o JSON trouxer "presenca_google", use-o para sugerir melhorias do Perfil da Empresa no Google (tipo "perfil_google": itens faltando no perfil, avaliações sem resposta) e do site na busca (tipo "seo": consultas com muitas impressões e poucos cliques, páginas em posição média entre 5 e 20, perguntas que as pessoas fazem e o site não responde, pensando também em respostas de IA/AEO). Nunca escreva o texto de uma resposta a avaliação nem de um post como se fosse publicar: apenas recomende, pois publicar exige aprovação do dono.
+7. Quando o JSON trouxer "aprendizados", leve em conta o que já foi testado: não repita uma ideia que um experimento refutou e aproveite o que funcionou. Recomendações do tipo "criativo" sugerem o que testar (ângulo, formato, público), sem escrever o anúncio pronto e sem inventar fatos sobre os produtos.
+8. Quando o JSON trouxer "presenca_google", use-o para sugerir melhorias do Perfil da Empresa no Google (tipo "perfil_google": itens faltando no perfil, avaliações sem resposta) e do site na busca (tipo "seo": consultas com muitas impressões e poucos cliques, páginas em posição média entre 5 e 20, perguntas que as pessoas fazem e o site não responde, pensando também em respostas de IA/AEO). Nunca escreva o texto de uma resposta a avaliação nem de um post como se fosse publicar: apenas recomende, pois publicar exige aprovação do dono.
 
 Como escrever:
 - Português do Brasil simples, direto, sem jargão. Quando usar um termo técnico (ROAS, CAC, CTR), explique em poucas palavras.
@@ -46,6 +47,20 @@ async function acrescentarExtras(db: Admin, workspaceId: string, resumo: ResumoD
     else resumo.avisos.push("Presença no Google (Perfil da Empresa e Search Console) não conectada: " + presenca.motivo);
   } catch {
     resumo.avisos.push("Não foi possível ler a Presença no Google agora.");
+  }
+
+  // Memória do Learning Engine: o que já foi testado e concluído neste workspace.
+  // Se as tabelas ainda não existirem (migração da Etapa 8 não aplicada), o bloco só fica de fora.
+  const [{ data: aprendizados }, { data: experimentos }] = await Promise.all([
+    db.from("aprendizados").select("categoria, texto, criado_em").eq("workspace_id", workspaceId).order("criado_em", { ascending: false }).limit(20),
+    db.from("experimentos").select("nome, metrica, status, vencedor, conclusao, inicio, fim").eq("workspace_id", workspaceId)
+      .order("criado_em", { ascending: false }).limit(10),
+  ]);
+  if (aprendizados?.length || experimentos?.length) {
+    resumo.aprendizados = {
+      o_que_ja_aprendemos: (aprendizados ?? []).map((a) => ({ categoria: a.categoria, texto: a.texto, data: String(a.criado_em).slice(0, 10) })),
+      experimentos_recentes: experimentos ?? [],
+    };
   }
 }
 

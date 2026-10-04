@@ -166,3 +166,27 @@ arquivos principais, decisões tomadas sozinho e o que o Jackson precisa testar.
 1. Aplicar a migração da Etapa 7. Em Conexões → Presença no Google → Autorizar (precisa da Parte B do Google feita).
 2. Presença no Google → escolher a propriedade do Search Console → ver consultas e páginas.
 3. Se a Business Profile API já estiver liberada: escolher o perfil, escrever uma resposta a uma avaliação, conferir que ela fica "aguardando aprovação" e só publica depois do clique do dono.
+
+### Etapa 8 — Creative Studio e Learning Engine (04/10/2026)
+
+**O que mudei**
+- Página **Creative Studio** (link no menu), com cinco partes: Produtos, Pedir variações, Criativos, Experimentos (testes A/B) e Aprendizados.
+- **Produtos** são a única fonte de fatos para a IA (nome, descrição, preço opcional, fatos importantes, público).
+- `src/lib/criativos/gerar.ts`: pede à Claude API variações com título, descrição, chamada (CTA) e texto em **AIDA** e **PAS**, respeitando o tamanho de cada plataforma. Depois da IA o código confere: variação que cita **qualquer número que não está no cadastro** (preço, desconto, duração, nota) é barrada, assim como a que passa do tamanho.
+- Variações aprovadas na conferência são salvas como rascunho; a pessoa clica em "salvar" ou "descartar".
+- **Experimentos**: registra o teste (hipótese, criativo A e B, métrica, início) e, ao concluir, os resultados digitados por uma pessoa, o vencedor e a conclusão, que vira um **aprendizado**.
+- O **Diretor** agora recebe os aprendizados e os experimentos recentes no resumo e é instruído a não repetir o que já foi refutado.
+- Migração `20261004050000_etapa8_creative_learning.sql` (**não aplicada**): tabelas `produtos`, `criativos`, `hipoteses`, `experimentos`, `aprendizados`, com RLS (membros leem; dono/admin escrevem).
+- Testes em `src/lib/criativos/gerar.test.ts`.
+
+**Decisões tomadas sozinho**
+- Criei a tabela `produtos` (o plano não citava), porque "usar só dados cadastrados" precisa de um cadastro. A página Comercial continua aceitando o nome do produto digitado à mão; ligar as duas fica como melhoria futura.
+- A conferência de números é rígida de propósito: prefiro barrar uma variação boa a deixar passar um preço inventado. A tela informa quantas foram barradas.
+- Os resultados dos testes A/B são **digitados por uma pessoa** a partir da plataforma. A JUDITE não calcula o vencedor sozinha nesta etapa (as métricas por anúncio ainda não distinguem variações de um mesmo teste).
+- "Desativar" produto não apaga nada (o histórico de criativos e testes continua).
+- Não cheguei a chamar a Claude API de verdade (mesmo motivo da Etapa 6).
+
+**Como testar**
+1. Aplicar a migração da Etapa 8. Creative Studio → cadastrar um produto com preço e fatos.
+2. Com `ANTHROPIC_API_KEY`: "Gerar variações" → conferir que nenhum texto traz preço ou número que você não cadastrou.
+3. Registrar um experimento com dois criativos, concluir com resultados e ver a conclusão aparecer em Aprendizados.
