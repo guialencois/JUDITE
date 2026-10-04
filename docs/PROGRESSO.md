@@ -244,3 +244,36 @@ arquivos principais, decisões tomadas sozinho e o que o Jackson precisa testar.
 1. Aplicar a migração da Etapa 10. Diretor → seção "Autonomia da JUDITE": deve aparecer **Desligada**.
 2. Como dono: marcar a caixa e "Ligar autonomia" → fica verde e aparece o botão "Parar tudo". Clicar em "Parar tudo" → volta a desligada.
 3. **Recomendo deixar desligada** até as plataformas estarem conectadas e você ter acompanhado alguns relatórios.
+
+## Resumo final do modo autônomo (04/10/2026)
+
+**Situação:** as 10 etapas do plano foram implementadas, na ordem, na branch `desenvolvimento`
+(um commit por etapa, todos enviados ao GitHub). `npm run lint` e `npm run build` passam; `npx vitest run`
+passa com 70 testes em 11 arquivos. Nada foi para a `main`, nenhuma migração foi aplicada e nenhuma API de
+plataforma foi chamada com credenciais.
+
+| Etapa | Entrega | Critério "pronto quando" |
+|---|---|---|
+| 1 | Diagnóstico da aba Site, modo de teste e "última visita" | Cumprido: a coleta já funciona (causa documentada). |
+| 2 | Windsor removido; provedor nativo da Meta por workspace | Cumprido no código; **não testado com conta real**. |
+| 3 | Google Ads nativo | Cumprido no código; depende do developer token; não testado com conta real. |
+| 4 | TikTok Ads (conexão + provedor + terceira plataforma) | Cumprido no código; precisa da migração 1 e do app aprovado. |
+| 5 | Comercial, metas, ROAS real, CAC e freio mensal | Cumprido; a página funciona sem migração, o limite mensal precisa da migração 2. |
+| 6 | Diretor v1 | Cumprido no código; **a chamada real à Claude API não foi testada** (sem chave). |
+| 7 | Presença no Google | Cumprido no código; não testado com conta real. |
+| 8 | Creative Studio e Learning Engine | Cumprido no código; geração real não testada (sem chave). |
+| 9 | Campaign Manager | Cumprido em modo simulado (o que o plano pedia). Modo real não testado. |
+| 10 | Autonomia supervisionada | Cumprido: regras cobertas por testes e visíveis no histórico. |
+
+**O que é mais importante saber**
+1. O maior risco é o do item "não testado com conta real": as integrações foram escritas com cuidado, mas só o
+   primeiro uso com credenciais vai confirmar cada campo. Os erros das plataformas aparecem em português na tela
+   e no histórico, o que deve facilitar os ajustes.
+2. Tudo o que mexe em dinheiro passa por um único caminho (`src/lib/trafego/executar.ts`) e pelos freios de
+   `src/lib/trafego/limites.ts`. A automação nunca confirma sozinha acima de um limite.
+3. Padrões seguros escolhidos: autonomia desligada, publicação de campanha em modo simulado, publicação no Perfil
+   da Empresa só com aprovação do dono, variação por ajuste em 10%.
+4. Li o banco de produção **só com `select`** duas vezes: para o diagnóstico da aba Site e para conferir os nomes
+   das restrições que as migrações alteram.
+
+O que falta fazer (migrações, variáveis, liberações e o roteiro de testes) está em `docs/PENDENTE.md`.
