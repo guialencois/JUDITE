@@ -216,3 +216,31 @@ arquivos principais, decisões tomadas sozinho e o que o Jackson precisa testar.
 2. Campanhas → "Montar um rascunho à mão" → salvar. Deve aparecer "aguardando aprovação" e, se o orçamento passar dos limites, os avisos em amarelo.
 3. Como dono: "Aprovar (simulado)" → vira "criada e pausada · SIMULADA". Depois "Aprovar ativação (simulado)" → "ativa · SIMULADA".
 4. Gerenciador → Histórico de ações: as três linhas aparecem (rascunho, criação e ativação), marcadas como SIMULAÇÃO.
+
+### Etapa 10 — Autonomia supervisionada (04/10/2026)
+
+**O que mudei**
+- Chave **"Autonomia da JUDITE"** por workspace, na página Diretor. **Desligada por padrão** (sem linha no banco = desligada). Só o **dono** liga, marcando uma caixa de "li as regras".
+- Botão vermelho **"Parar tudo"** (dono ou admin): desliga na hora. A rodada confere a chave de novo antes de cada ação, então parar vale mesmo no meio de uma execução.
+- `src/lib/diretor/autonomia.ts`, com regras **determinísticas (sem IA)**:
+  - **pausar** campanha ativa com R$ 100 ou mais de gasto em 14 dias e zero conversões, depois de 7 dias de dados e 100 cliques;
+  - **reduzir 10%** a verba de campanha com custo por conversão 2x acima da média da plataforma;
+  - **aumentar até 10%** a verba de campanha com custo por conversão até 70% da média e pelo menos 5 conversões.
+- Toda ação sai por `executarAcao` com origem `automacao`: os freios de `limites.ts` valem do mesmo jeito, e o que passa de qualquer limite (teto diário, % por ajuste, orçamento do mês) **não é aplicado**, fica `aguardando_aprovacao`.
+- Roda no cron diário, depois do relatório. Funciona mesmo sem a chave da IA.
+- **Visível no histórico**: a página Diretor lista as últimas ações da automação, e o Histórico de ações do Gerenciador ganhou a coluna "Quem" (pessoa ou JUDITE).
+- Aprovar uma recomendação de verba do Diretor agora **aplica** a mudança (pelo mesmo `executarAcao`, com o clique humano valendo como confirmação) e a recomendação vira `executada`.
+- Migração `20261004070000_etapa10_autonomia.sql` (**não aplicada**).
+- Testes em `src/lib/diretor/autonomia.test.ts` (12 casos).
+
+**Decisões tomadas sozinho**
+- **A autonomia não pausa por "zero conversões" quando a plataforma não está medindo conversão nenhuma.** No Guia Lençóis a venda acontece no WhatsApp; se o pixel não registra compra, todas as campanhas teriam "zero conversões" e seriam pausadas por engano. Só pauso quando alguma outra campanha da mesma plataforma converteu (sinal de que a medição funciona).
+- No máximo 3 ações por dia por workspace, e nunca na mesma campanha duas vezes em 7 dias (período de aprendizado).
+- A autonomia **nunca** cria campanha, **nunca** ativa campanha e **nunca** publica no Perfil da Empresa. Só pausa, reduz e aumenta dentro dos limites.
+- A IA não decide ações automáticas: ela só recomenda. As ações automáticas vêm de regras fixas e testadas.
+- Não testei com plataforma real. A autonomia só age se houver conexão, campanhas sincronizadas e a chave ligada.
+
+**Como testar**
+1. Aplicar a migração da Etapa 10. Diretor → seção "Autonomia da JUDITE": deve aparecer **Desligada**.
+2. Como dono: marcar a caixa e "Ligar autonomia" → fica verde e aparece o botão "Parar tudo". Clicar em "Parar tudo" → volta a desligada.
+3. **Recomendo deixar desligada** até as plataformas estarem conectadas e você ter acompanhado alguns relatórios.

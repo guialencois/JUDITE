@@ -11,7 +11,12 @@ import { podeAgir } from "@/lib/trafego/acesso";
 import { brl } from "@/lib/trafego/metricas";
 import { NOME_PLATAFORMA, type Plataforma } from "@/lib/trafego/tipos";
 import { carregarWorkspace } from "../carregar";
-import { decidir, gerarAgora } from "./actions";
+import {
+  AJUSTE_PERCENT, DIAS_DE_ESPERA, FATOR_BOM, FATOR_CARO, GASTO_ALTO_REAIS, MAX_ACOES_POR_RODADA,
+} from "@/lib/diretor/autonomia";
+import { CLIQUES_MINIMOS, CONVERSOES_MINIMAS, DIAS_MINIMOS } from "@/lib/diretor/regras";
+import { TIPOS_DE_VERBA } from "@/lib/diretor/tipos";
+import { decidir, gerarAgora, ligarAutonomia, pararTudo } from "./actions";
 
 export const dynamic = "force-dynamic";
 // Gerar o relatório chama a IA e pode levar mais de um minuto.
@@ -22,10 +27,17 @@ const ERROS: Record<string, string> = {
   recente: "Já existe um relatório gerado há menos de 10 minutos. Aguarde um pouco para gerar outro.",
   geracao: "Não foi possível gerar o relatório. O motivo aparece abaixo, na última tentativa.",
   decisao: "Não foi possível registrar a decisão (talvez ela já tenha sido decidida).",
+  execucao: "A recomendação foi aprovada, mas não pôde ser aplicada. O motivo aparece nela, abaixo.",
+  "so-dono": "Só o dono do workspace pode ligar a autonomia.",
+  ciente: "Para ligar a autonomia, marque a caixa confirmando que você leu as regras.",
+  autonomia: "Não foi possível mudar a autonomia. Se a migração da Etapa 10 ainda não foi aplicada no Supabase, aplique-a primeiro.",
 };
 const AVISOS: Record<string, string> = {
   gerado: "Relatório gerado.",
   aprovada: "Recomendação aprovada.",
+  executada: "Recomendação aprovada e aplicada na plataforma.",
+  "autonomia-ligada": "Autonomia ligada. A JUDITE passa a agir uma vez por dia, dentro das regras e dos limites.",
+  "autonomia-desligada": "Autonomia desligada. A JUDITE não faz mais nada sozinha.",
   recusada: "Recomendação recusada.",
 };
 const COR_PONTO: Record<string, string> = {
@@ -72,6 +84,13 @@ export default async function DiretorPage(props: PageProps<"/painel/[workspaceId
     ? await supabase.from("diretor_recomendacoes").select("*").eq("relatorio_id", relatorio.id).order("ordem")
     : { data: [] };
   const { data: campanhas } = await supabase.from("trafego_campanhas").select("plataforma, campanha_id, nome").eq("workspace_id", workspace.id);
+  const [{ data: autonomia, error: erroAutonomia }, { data: acoesAuto }] = await Promise.all([
+    supabase.from("autonomia").select("ligada, ligada_em, desligada_em").eq("workspace_id", workspace.id).maybeSingle(),
+    supabase.from("trafego_acoes").select("id, criado_em, entidade_nome, acao, valor_antes, valor_depois, status, resultado")
+      .eq("workspace_id", workspace.id).eq("origem", "automacao").order("criado_em", { ascending: false }).limit(10),
+  ]);
+  const ligada = autonomia?.ligada === true;
+  const dono = papel === "owner";
   const nomeCampanha = (p: string | null, id: string | null) =>
     campanhas?.find((c) => c.campanha_id === id && (!p || c.plataforma === p))?.nome || id || "";
 
@@ -157,8 +176,9 @@ export default async function DiretorPage(props: PageProps<"/painel/[workspaceId
           <section className="space-y-3">
             <h2 className="font-serif text-xl">Recomendações</h2>
             <p className="text-xs text-zinc-500">
-              Aprovar registra a sua decisão. Nesta versão o Diretor não muda nada sozinho: para aplicar uma mudança de verba,
-              use o <Link href={`/painel/${workspace.id}/trafego/gerenciador`} className="underline">Gerenciador</Link>.
+              Recomendações de verba (pausar, ativar, ajustar orçamento) são <strong>aplicadas na conta de anúncios</strong> quando você aprova,
+              e ficam no histórico do <Link href={`/painel/${workspace.id}/trafego/gerenciador`} className="underline">Gerenciador</Link>.
+              As outras (site, criativo, perfil) só registram a sua decisão.
             </p>
             {(recomendacoes ?? []).map((r) => (
               <article key={r.id} className="space-y-2 rounded-xl border border-zinc-800 p-4 text-sm">
@@ -186,7 +206,9 @@ export default async function DiretorPage(props: PageProps<"/painel/[workspaceId
                       <input type="hidden" name="workspaceId" value={workspace.id} />
                       <input type="hidden" name="recomendacaoId" value={r.id} />
                       <input type="hidden" name="decisao" value="aprovar" />
-                      <BotaoEnviar className="rounded-lg bg-emerald-500/90 px-3 py-1.5 text-sm font-medium text-zinc-950" aguarde="Salvando...">Aprovar</BotaoEnviar>
+                      <BotaoEnviar className="rounded-lg bg-emerald-500/90 px-3 py-1.5 text-sm font-medium text-zinc-950" aguarde="Aplicando...">
+                        {TIPOS_DE_VERBA.includes(r.tipo as TipoRecomendacao) ? "Aprovar e aplicar na conta" : "Aprovar"}
+                      </BotaoEnviar>
                     </form>
                     <form action={decidir}>
                       <input type="hidden" name="workspaceId" value={workspace.id} />
@@ -215,6 +237,71 @@ export default async function DiretorPage(props: PageProps<"/painel/[workspaceId
           )}
         </>
       )}
+
+      {/* ---------------------------------------------------------------- Autonomia */}
+      <section className={"space-y-3 rounded-xl border p-5 " + (ligada ? "border-emerald-500/50 bg-emerald-500/5" : "border-zinc-800")}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="font-serif text-xl">Autonomia da JUDITE</h2>
+            <p className={"text-sm " + (ligada ? "text-emerald-300" : "text-zinc-400")}>
+              {ligada ? `Ligada${autonomia?.ligada_em ? " desde " + quando(autonomia.ligada_em as string) : ""}.` : "Desligada. A JUDITE só recomenda; nada muda sem você."}
+            </p>
+          </div>
+          {ligada && gestor && (
+            <form action={pararTudo}>
+              <input type="hidden" name="workspaceId" value={workspace.id} />
+              <BotaoEnviar className="rounded-lg bg-rose-500 px-5 py-2.5 text-sm font-semibold text-white" aguarde="Parando...">Parar tudo</BotaoEnviar>
+            </form>
+          )}
+        </div>
+
+        {erroAutonomia && (
+          <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+            A autonomia ainda não existe no banco (migração da Etapa 10 não aplicada). Ela está desligada.
+          </p>
+        )}
+
+        <div className="space-y-1 text-sm text-zinc-300">
+          <p>Ligada, a JUDITE pode fazer sozinha, uma vez por dia e em no máximo {MAX_ACOES_POR_RODADA} campanhas:</p>
+          <ul className="list-disc space-y-1 pl-5 text-zinc-400">
+            <li><strong className="text-zinc-200">Pausar</strong> campanha que gastou R$ {GASTO_ALTO_REAIS} ou mais em 14 dias sem nenhuma conversão (só quando a plataforma está medindo conversões em outras campanhas).</li>
+            <li><strong className="text-zinc-200">Reduzir {AJUSTE_PERCENT}%</strong> a verba de campanha com custo por conversão {FATOR_CARO}x acima da média.</li>
+            <li><strong className="text-zinc-200">Aumentar até {AJUSTE_PERCENT}%</strong> a verba de campanha com custo por conversão até {Math.round(FATOR_BOM * 100)}% da média e pelo menos {CONVERSOES_MINIMAS} conversões.</li>
+          </ul>
+          <p className="text-xs text-zinc-500">
+            Sempre depois de {DIAS_MINIMOS} dias de dados e {CLIQUES_MINIMOS} cliques, e nunca na mesma campanha duas vezes em {DIAS_DE_ESPERA} dias.
+            Qualquer coisa acima dos Limites da IA (teto por dia, % por ajuste, orçamento do mês) não é aplicada: fica aguardando a sua aprovação.
+            Ela nunca cria campanha, nunca ativa campanha e nunca publica nada sozinha.
+          </p>
+        </div>
+
+        {!ligada && dono && !erroAutonomia && (
+          <form action={ligarAutonomia} className="space-y-2 rounded-lg border border-zinc-800 p-3">
+            <input type="hidden" name="workspaceId" value={workspace.id} />
+            <label className="flex items-start gap-2 text-sm text-zinc-300">
+              <input type="checkbox" name="ciente" value="sim" required className="mt-1" />
+              <span>Li as regras acima e quero que a JUDITE possa pausar campanhas e ajustar verbas sozinha, dentro dos limites.</span>
+            </label>
+            <BotaoEnviar className={botao} aguarde="Ligando...">Ligar autonomia</BotaoEnviar>
+          </form>
+        )}
+        {!ligada && !dono && <p className="text-xs text-zinc-500">Só o dono do workspace pode ligar a autonomia.</p>}
+
+        <div>
+          <h3 className="mb-2 text-sm font-medium text-zinc-300">Últimas ações da automação</h3>
+          <ul className="space-y-1 text-xs">
+            {(acoesAuto ?? []).map((a) => (
+              <li key={a.id} className="rounded-lg bg-zinc-950 px-3 py-2 text-zinc-400">
+                <span className="text-zinc-500">{quando(a.criado_em as string)}</span> · <span className="text-zinc-200">{a.entidade_nome}</span> · {a.acao}
+                {a.acao === "definir_orcamento" ? ` de ${brl(a.valor_antes === null ? null : Number(a.valor_antes))} para ${brl(Number(a.valor_depois ?? 0))}` : ""}
+                {" · "}<span className={a.status === "aplicada" ? "text-emerald-300" : a.status === "erro" ? "text-rose-300" : "text-amber-300"}>{a.status}</span>
+                {a.resultado ? <span className="block text-zinc-500">{String(a.resultado).slice(0, 220)}</span> : null}
+              </li>
+            ))}
+            {!(acoesAuto ?? []).length && <li className="text-zinc-500">Nenhuma ação automática até agora.</li>}
+          </ul>
+        </div>
+      </section>
 
       {(relatorios ?? []).filter((r) => r.status === "ok").length > 1 && (
         <section className="text-xs text-zinc-500">
