@@ -263,8 +263,8 @@ export default async function ConexoesPage(props: PageProps<"/painel/[workspaceI
       </section>
 
       <p className="text-xs text-zinc-500">
-        Próximas conexões (LUNIKO, TikTok Ads, WhatsApp) entram nesta mesma página. Enquanto a leitura nativa não estiver ativa,
-        o painel de tráfego continua usando o provedor temporário.
+        A JUDITE lê e muda as campanhas direto pelas APIs oficiais de cada plataforma, sem intermediário pago.
+        Depois de conectar, abra Tráfego e clique em Sincronizar dados.
       </p>
     </main>
   );

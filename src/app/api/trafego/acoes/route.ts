@@ -11,7 +11,7 @@
 
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { provedorAtual } from "@/lib/anuncios/provedor";
+import { provedorDoWorkspace } from "@/lib/anuncios/provedor";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { papelNoWorkspace, podeAgir } from "@/lib/trafego/acesso";
 import { validarOrcamento } from "@/lib/trafego/limites";
@@ -76,6 +76,11 @@ export async function POST(req: Request) {
     tipo_entidade: p.tipoEntidade, entidade_id: p.entidadeId, entidade_nome: nome, acao: p.acao,
   };
 
+  // Sem conexão com a plataforma não há o que fazer: avisa antes de qualquer outra coisa.
+  const resolvido = await provedorDoWorkspace(db, p.workspaceId, p.plataforma);
+  if (!resolvido.ok) return NextResponse.json({ erro: resolvido.motivo }, { status: 409 });
+  const provedor = resolvido.provedor;
+
   let acao: AcaoAnuncio;
   let antes: string | null;
   let depois: string;
@@ -83,7 +88,7 @@ export async function POST(req: Request) {
   if (p.acao === "pausar" || p.acao === "ativar") {
     acao = { tipo: p.acao, plataforma: p.plataforma, conta, entidade: p.tipoEntidade, entidadeId: p.entidadeId };
     antes = (campanha.status as string | null) ?? null;
-    depois = p.acao === "ativar" ? "ENABLED" : "PAUSED";
+    depois = p.acao === "ativar" ? provedor.statusAtiva : provedor.statusPausada;
   } else {
     const { data: cfg } = await db.from("trafego_config").select("chave, valor").eq("workspace_id", p.workspaceId);
     const valorCfg = (k: string, padrao: number) => {
@@ -114,7 +119,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const resultado = await provedorAtual().executar(acao);
+    const resultado = await provedor.executar(acao);
     await db.from("trafego_campanhas")
       .update(p.acao === "definir_orcamento"
         ? { orcamento_diario: Number(depois), atualizado_em: new Date().toISOString() }

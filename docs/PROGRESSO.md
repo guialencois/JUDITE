@@ -28,3 +28,26 @@ arquivos principais, decisões tomadas sozinho e o que o Jackson precisa testar.
 **Como testar**
 1. Abra `https://www.guialencois.org/?judite_teste=1` (depois que a prévia/produção estiver com este código). Deve aparecer a faixa verde "teste recebido".
 2. Na JUDITE, aba Site: "Última visita recebida" e "Último teste" com data e hora.
+
+### Etapa 2 — Saída do Windsor e provedor nativo da Meta (04/10/2026)
+
+**O que mudei**
+- Apaguei `src/lib/anuncios/windsor.ts`, a variável `WINDSOR_API_KEY` do `.env.example` e os textos sobre "provedor temporário".
+- Novo `src/lib/anuncios/meta.ts` (Marketing API oficial, versão `v26.0`): métricas diárias por campanha e anúncio (`/act_…/insights`), estado e orçamento das campanhas (`/act_…/campaigns`), pausar/ativar e mudar orçamento diário (em centavos).
+- `src/lib/anuncios/provedor.ts`: o provedor agora é escolhido **por workspace** (`provedorDoWorkspace`), lendo a conexão salva em Conexões. Sem conexão, devolve a mensagem "Conecte a Meta em Conexões…".
+- Sincronização (`/api/trafego/sync`) e ações (`/api/trafego/acoes`) usam o provedor de cada plataforma. O status gravado depois de pausar/ativar agora segue o nome de cada plataforma (Meta usa `ACTIVE`, Google usa `ENABLED`).
+- Telas Tráfego e Gerenciador mostram um aviso amarelo com as plataformas ainda não conectadas e um link para Conexões. O botão Sincronizar passa a mostrar o motivo quando uma plataforma falha.
+- Testes em `src/lib/anuncios/meta.test.ts` (conversão de centavos, compra não contada em dobro).
+
+**Decisões tomadas sozinho**
+- Versão da API: testei sem credenciais quais versões respondem (`graph.facebook.com/vNN.0`); a mais nova hoje é a **v26.0**. Fica numa constante só (`META_VERSAO` em `src/lib/conexoes/config.ts`).
+- "Compras" usa o primeiro tipo encontrado entre pixel → purchase → omni_purchase, porque a Meta repete a mesma compra em vários tipos.
+- "Cliques" usa cliques no link (o que leva ao site), não o total de cliques.
+- Campanha da Meta sem orçamento próprio (orçamento nos conjuntos) aparece com orçamento "definir"; tentar mudar pede confirmação e a Meta pode recusar. O erro fica no histórico.
+- Não chamei nenhuma API com token real. O código só foi exercitado pelos testes, com dados de exemplo.
+- A variável `WINDSOR_API_KEY` pode ser apagada da Vercel e do `.env.local` (não é mais lida).
+
+**Como testar**
+1. Sem conexão: abra Tráfego. Deve aparecer o aviso "Meta Ads: conecte a Meta em Conexões…".
+2. Conecte a Meta em Conexões (token do usuário do sistema + ID da conta) e clique em "Sincronizar dados" no Tráfego.
+3. No Gerenciador, as campanhas da Meta devem aparecer com status e orçamento.

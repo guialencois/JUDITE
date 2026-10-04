@@ -1,6 +1,6 @@
 /**
  * Tipos do painel de tráfego, independentes de quem fornece os dados.
- * Hoje quem fornece é o Windsor (temporário); depois será o LUNIKO.
+ * Quem fornece são os provedores nativos de src/lib/anuncios (APIs oficiais).
  *
  * Regra do painel inteiro:
  *   null = a plataforma NÃO informa essa métrica (ex.: page view no Google Ads)

@@ -12,6 +12,8 @@ export const GOOGLE_ESCOPO = "https://www.googleapis.com/auth/adwords";
 export const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 export const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 export const META_GRAPH_URL = "https://graph.facebook.com";
+/** Versão da Graph/Marketing API. Conferida em 04/10/2026: v26.0 é a mais nova que responde. */
+export const META_VERSAO = "v26.0";
 
 /** Endereço público do site, descoberto pelo próprio pedido (SITE_URL é opcional, para fixar um domínio). */
 export async function urlDoSite(): Promise<string> {

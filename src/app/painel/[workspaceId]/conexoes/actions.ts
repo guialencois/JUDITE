@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { exigirDono } from "@/lib/conexoes/acesso";
-import { comTracos, META_GRAPH_URL, soDigitos } from "@/lib/conexoes/config";
+import { comTracos, META_GRAPH_URL, META_VERSAO, soDigitos } from "@/lib/conexoes/config";
 import { gravarConexao } from "@/lib/conexoes/segredos";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -112,7 +112,7 @@ export async function salvarMeta(formData: FormData) {
 
   // Testa o token na própria Meta antes de guardar (o token vai no cabeçalho, nunca na URL).
   const conta = `act_${parsed.data.conta}`;
-  const teste = await fetch(`${META_GRAPH_URL}/${conta}?fields=name,currency,account_status`, {
+  const teste = await fetch(`${META_GRAPH_URL}/${META_VERSAO}/${conta}?fields=name,currency,account_status`, {
     headers: { Authorization: `Bearer ${parsed.data.token}` },
     cache: "no-store",
   }).catch(() => null);

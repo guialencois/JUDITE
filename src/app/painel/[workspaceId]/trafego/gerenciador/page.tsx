@@ -3,10 +3,12 @@
  * Só dono e admin podem mudar campanhas; membros apenas veem.
  */
 
+import { AvisoConexoes } from "@/components/trafego/AvisoConexoes";
 import { TabelaCampanhas, type LinhaCampanhaTabela } from "@/components/trafego/TabelaCampanhas";
+import { plataformasSemConexao } from "@/lib/conexoes/status";
 import { podeAgir } from "@/lib/trafego/acesso";
 import { brl, derivar, somar } from "@/lib/trafego/metricas";
-import { dia, metricaDoBanco, NOME_PLATAFORMA, type LinhaMetrica, type Plataforma } from "@/lib/trafego/tipos";
+import { dia, metricaDoBanco, NOME_PLATAFORMA, PLATAFORMAS, type LinhaMetrica, type Plataforma } from "@/lib/trafego/tipos";
 import { carregarWorkspace } from "../../carregar";
 
 export const dynamic = "force-dynamic";
@@ -32,6 +34,7 @@ export default async function PaginaGerenciador(props: PageProps<"/painel/[works
     supabase.from("trafego_config").select("valor").eq("workspace_id", workspace.id).eq("chave", "custos_percent").maybeSingle(),
   ]);
   const custos = Number(cfg?.valor ?? 25);
+  const semConexao = await plataformasSemConexao(supabase, workspace.id);
 
   const porCampanha = new Map<string, LinhaMetrica[]>();
   for (const r of metricas ?? []) {
@@ -67,6 +70,8 @@ export default async function PaginaGerenciador(props: PageProps<"/painel/[works
           {podeAgir(papel) ? "As ações valem na conta de anúncios na hora." : "Seu papel é de leitura: só dono ou admin mudam campanhas."}
         </p>
       </header>
+
+      <AvisoConexoes workspaceId={workspace.id} faltando={semConexao} total={PLATAFORMAS.length} />
 
       <TabelaCampanhas workspaceId={workspace.id} podeAgir={podeAgir(papel)} linhas={linhas} />
 
