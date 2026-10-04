@@ -201,7 +201,7 @@ export async function salvarTikTok(formData: FormData) {
 }
 
 export async function desconectar(formData: FormData) {
-  const parsed = z.object({ workspaceId: wsSchema, provedor: z.enum(["google_ads", "meta", "tiktok"]) }).safeParse({
+  const parsed = z.object({ workspaceId: wsSchema, provedor: z.enum(["google_ads", "meta", "tiktok", "google_presenca"]) }).safeParse({
     workspaceId: formData.get("workspaceId"),
     provedor: formData.get("provedor"),
   });

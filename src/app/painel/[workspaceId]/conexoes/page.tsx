@@ -23,6 +23,7 @@ const ERROS: Record<string, string> = {
   "conta-de-outro": "Essa conta de anúncios já está ligada a outro workspace.",
   salvar: "Não foi possível salvar. Tente de novo.",
   "salvar-tiktok": "Não foi possível salvar a conexão do TikTok. Se a migração da Etapa 4 ainda não foi aplicada no Supabase, aplique-a primeiro (veja docs/PENDENTE.md).",
+  "salvar-presenca": "Não foi possível salvar a autorização. Se a migração da Etapa 7 ainda não foi aplicada no Supabase, aplique-a primeiro (veja docs/PENDENTE.md).",
   "tiktok-app": "Salve primeiro o ID e a chave secreta do app do TikTok.",
   "tiktok-app-dados": "Confira os valores: o ID do app tem só números e a chave secreta tem letras e números.",
   "tiktok-state": "A autorização do TikTok não pôde ser confirmada. Tente de novo.",
@@ -38,6 +39,7 @@ const AVISOS: Record<string, string> = {
   "google-conta": "ID do cliente do Google Ads salvo.",
   "meta-conectada": "Meta Ads conectada e testada com sucesso.",
   desconectado: "Conexão removida. O token foi apagado.",
+  "presenca-autorizada": "Google autorizado para o Perfil da Empresa e o Search Console. Agora escolha o perfil e o site na página Presença no Google.",
   "tiktok-app": "Credenciais do app do TikTok salvas (criptografadas).",
   "tiktok-autorizado": "TikTok autorizado. Agora escolha a conta de anúncios.",
   "tiktok-conectado": "TikTok Ads conectado e testado com sucesso.",
@@ -71,6 +73,8 @@ export default async function ConexoesPage(props: PageProps<"/painel/[workspaceI
   const google = linhas?.find((l) => l.provedor === "google_ads");
   const meta = linhas?.find((l) => l.provedor === "meta");
   const tiktok = linhas?.find((l) => l.provedor === "tiktok");
+  const presenca = linhas?.find((l) => l.provedor === "google_presenca");
+  const pDados = (presenca?.dados ?? {}) as { tem_autorizacao?: boolean; local?: string | null; site_gsc?: string | null };
   const tDados = (tiktok?.dados ?? {}) as {
     conta?: string; nome?: string; anunciantes?: string[]; tem_app_oauth?: boolean; tem_autorizacao?: boolean;
   };
@@ -225,6 +229,72 @@ export default async function ConexoesPage(props: PageProps<"/painel/[workspaceI
             <input type="hidden" name="workspaceId" value={workspace.id} />
             <input type="hidden" name="provedor" value="google_ads" />
             <button className="text-sm text-zinc-500 hover:text-rose-400">Remover conexão do Google Ads</button>
+          </form>
+        )}
+      </section>
+
+      {/* ------------------------------------------------------------ PRESENÇA NO GOOGLE */}
+      <section className="space-y-4 rounded-xl border border-zinc-800 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-xl font-medium">Presença no Google (Perfil da Empresa e Search Console)</h2>
+          <div className="flex flex-wrap gap-2">
+            <Selo ok={Boolean(pDados.tem_autorizacao)} sim="autorizada" nao="autorização" />
+            <Selo ok={Boolean(pDados.local)} sim="perfil escolhido" nao="perfil" />
+            <Selo ok={Boolean(pDados.site_gsc)} sim="Search Console" nao="Search Console" />
+          </div>
+        </div>
+
+        <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+          A <strong>Business Profile API</strong> (avaliações, informações e posts do Perfil da Empresa) só funciona depois que o Google
+          aprova um <strong>pedido de acesso</strong> para o seu projeto do Google Cloud. Antes disso a cota é zero e a JUDITE mostra um aviso.
+          O Search Console não precisa desse pedido.
+        </p>
+
+        <details className="rounded-lg bg-zinc-900/60 p-3" open={!pDados.tem_autorizacao}>
+          <summary className="cursor-pointer text-sm font-medium">Passo a passo</summary>
+          <ol className="mt-3 list-decimal space-y-3 pl-5">
+            <li className={passo}>
+              Use o mesmo projeto do Google Cloud da Parte B do Google Ads (o app OAuth é reaproveitado). Se ainda não fez a Parte B, faça primeiro.
+            </li>
+            <li className={passo}>
+              Em <code className={codigo}>console.cloud.google.com</code> → <strong>APIs e serviços → Biblioteca</strong>, ative:
+              {" "}<strong>Google Search Console API</strong>, <strong>My Business Account Management API</strong>,
+              {" "}<strong>My Business Business Information API</strong>, <strong>Business Profile Performance API</strong> e
+              {" "}<strong>Google My Business API</strong>.
+              <span className="block text-xs text-zinc-500">As APIs do perfil só aparecem na Biblioteca depois que o pedido de acesso é aprovado.</span>
+            </li>
+            <li className={passo}>
+              Peça o acesso: procure por <strong>&quot;Business Profile API — solicitar acesso&quot;</strong> na ajuda do Google
+              (<code className={codigo}>developers.google.com/my-business/content/prereqs</code>) e preencha o formulário com o número do projeto.
+              O perfil precisa estar verificado e ativo há mais de 60 dias.
+            </li>
+            <li className={passo}>
+              Na <strong>Tela de permissão OAuth</strong> do projeto, adicione os escopos <code className={codigo}>business.manage</code> e
+              {" "}<code className={codigo}>webmasters.readonly</code>.
+            </li>
+            <li className={passo}>
+              No Search Console (<code className={codigo}>search.google.com/search-console</code>), confirme que o site está cadastrado e verificado
+              com o mesmo e-mail que vai autorizar.
+            </li>
+            <li className={passo}>Clique em <strong>Autorizar</strong> abaixo e depois escolha o perfil e o site na página Presença no Google.</li>
+          </ol>
+        </details>
+
+        {dono && cripto && app.oauth && (
+          <a href={`/api/conexoes/google/iniciar?workspaceId=${workspace.id}&alvo=presenca`} className={botao + " inline-block"}>
+            {pDados.tem_autorizacao ? "Autorizar de novo" : "Autorizar Perfil da Empresa e Search Console"}
+          </a>
+        )}
+        {!app.oauth && <p className="text-xs text-zinc-500">Disponível depois de salvar o app OAuth do Google (Parte B, acima).</p>}
+        {pDados.tem_autorizacao && (
+          <p className="text-sm"><a href={`/painel/${workspace.id}/presenca`} className="text-amber-300 underline">Abrir Presença no Google</a></p>
+        )}
+
+        {dono && presenca && (
+          <form action={desconectar}>
+            <input type="hidden" name="workspaceId" value={workspace.id} />
+            <input type="hidden" name="provedor" value="google_presenca" />
+            <button className="text-sm text-zinc-500 hover:text-rose-400">Remover autorização da Presença no Google</button>
           </form>
         )}
       </section>

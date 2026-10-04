@@ -2,7 +2,7 @@ import { cifrar, decifrar } from "@/lib/cripto";
 import type { createAdminClient } from "@/lib/supabase/admin";
 
 type Admin = ReturnType<typeof createAdminClient>;
-export type Provedor = "google_ads" | "meta" | "tiktok";
+export type Provedor = "google_ads" | "meta" | "tiktok" | "google_presenca";
 
 /**
  * Lê a conexão de um workspace com os segredos já abertos. SOMENTE no servidor,
@@ -40,7 +40,9 @@ export async function gravarConexao(
       ? Boolean(segredos.developer_token && segredos.client_id && segredos.client_secret && segredos.refresh_token && dados.cliente)
       : provedor === "tiktok"
         ? Boolean(segredos.access_token && dados.conta)
-        : Boolean(segredos.token && dados.conta);
+        : provedor === "google_presenca"
+          ? Boolean(segredos.refresh_token && (dados.local || dados.site_gsc))
+          : Boolean(segredos.token && dados.conta);
 
   const agora = new Date().toISOString();
   return db.from("conexoes").upsert({

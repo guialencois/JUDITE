@@ -14,7 +14,7 @@ import { segredoConfere } from "@/lib/trafego/segredo";
 
 export const runtime = "nodejs";
 
-const cookieSchema = z.object({ state: z.string().min(16), workspaceId: z.uuid() });
+const cookieSchema = z.object({ state: z.string().min(16), workspaceId: z.uuid(), alvo: z.enum(["ads", "presenca"]).default("ads") });
 
 export async function GET(req: NextRequest) {
   const bruto = req.cookies.get("judite_google_oauth")?.value;
@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
     salvo = null;
   }
   if (!salvo) return NextResponse.redirect(new URL("/painel", req.url));
-  const { state, workspaceId } = salvo;
+  const { state, workspaceId, alvo } = salvo;
 
   const voltar = (sufixo: string) => {
     const r = NextResponse.redirect(new URL(`/painel/${workspaceId}/conexoes?${sufixo}`, req.url));
@@ -61,10 +61,10 @@ export async function GET(req: NextRequest) {
   const tokens = (await troca.json().catch(() => null)) as { refresh_token?: string } | null;
   if (!troca.ok || !tokens?.refresh_token) return voltar("erro=google-token");
 
-  const { error } = await gravarConexao(db, workspaceId, "google_ads", dono.userId, {
+  const { error } = await gravarConexao(db, workspaceId, alvo === "presenca" ? "google_presenca" : "google_ads", dono.userId, {
     dados: { autorizado_em: new Date().toISOString() },
     segredos: { refresh_token: tokens.refresh_token },
   });
-  if (error) return voltar("erro=salvar");
-  return voltar("aviso=google-autorizado");
+  if (error) return voltar(alvo === "presenca" ? "erro=salvar-presenca" : "erro=salvar");
+  return voltar(alvo === "presenca" ? "aviso=presenca-autorizada" : "aviso=google-autorizado");
 }

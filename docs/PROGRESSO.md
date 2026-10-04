@@ -142,3 +142,27 @@ arquivos principais, decisões tomadas sozinho e o que o Jackson precisa testar.
 1. Sem a chave: abrir Diretor → aparece a explicação do que falta.
 2. Aplicar a migração da Etapa 6, cadastrar `ANTHROPIC_API_KEY` na Vercel e clicar em "Gerar relatório agora".
 3. Conferir se os números citados batem com Tráfego, Site e Comercial. Aprovar uma recomendação e recusar outra.
+
+### Etapa 7 — Perfil da Empresa no Google e Search Console (04/10/2026)
+
+**O que mudei**
+- Conexões: nova seção **Presença no Google**, que reaproveita o app OAuth do workspace (o mesmo do Google Ads) e pede os escopos `business.manage` e `webmasters.readonly`. A autorização fica numa conexão separada (`google_presenca`), com o refresh token criptografado. Passo a passo e **aviso claro de que a Business Profile API exige pedido de acesso ao Google**.
+- `src/lib/presenca/google.ts`: leitura do perfil (informações), avaliações, desempenho (visualizações, cliques para o site, ligações, rotas) e do Search Console (consultas, páginas, cliques, impressões, posição). Escrita: responder avaliação e publicar post.
+- Página **Presença no Google** (link no menu): o dono escolhe qual perfil e qual propriedade do Search Console são do workspace; cartões e tabelas; rascunho de resposta/post; **fila de aprovações**.
+- **Nada é publicado no Google sem aprovação**: dono ou admin escrevem o rascunho (`aguardando_aprovacao`); **só o dono** clica em "Aprovar e publicar".
+- O Diretor passa a receber um bloco `presenca_google` no resumo e a sugerir melhorias de perfil (`perfil_google`) e de SEO/AEO (`seo`).
+- Migração `20261004040000_etapa7_presenca_google.sql` (**não aplicada**): conexão `google_presenca` e tabela `presenca_acoes` com RLS.
+- Testes em `src/lib/presenca/google.test.ts`.
+
+**Decisões tomadas sozinho**
+- Cada parte da tela falha sozinha: se o Google ainda não liberou o perfil, o Search Console continua aparecendo, e cada falha mostra o motivo em português (API não ativada, cota zero = falta o pedido de acesso, autorização vencida).
+- A leitura é **ao vivo** (não guardo cópia das avaliações no banco), para não armazenar nome de cliente.
+- Para o Diretor, as avaliações vão **sem o nome de quem escreveu** (só estrelas e o texto, que é público no Google, cortado em 300 caracteres). Isso ajusta o que escrevi na Etapa 6: o resumo continua sem nomes nem contatos.
+- O dono só pode escolher perfil e site que a conta autorizada realmente administra (conferido no Google na hora de salvar).
+- A IA **não** escreve respostas nem posts nesta etapa: o texto é de uma pessoa. Geração de texto fica no Creative Studio (Etapa 8).
+- Usei os endereços das APIs que conheço da documentação oficial (Account Management v1, Business Information v1, Performance v1, My Business v4 para avaliações e posts, Search Console v3). **Não consegui testar com conta real**: está no roteiro e em PENDENTE.
+
+**Como testar**
+1. Aplicar a migração da Etapa 7. Em Conexões → Presença no Google → Autorizar (precisa da Parte B do Google feita).
+2. Presença no Google → escolher a propriedade do Search Console → ver consultas e páginas.
+3. Se a Business Profile API já estiver liberada: escolher o perfil, escrever uma resposta a uma avaliação, conferir que ela fica "aguardando aprovação" e só publica depois do clique do dono.
