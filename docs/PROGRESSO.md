@@ -114,3 +114,31 @@ arquivos principais, decisões tomadas sozinho e o que o Jackson precisa testar.
 1. Comercial → registrar uma venda (ex.: produto, 2 pessoas, um valor). Os cartões e as tabelas mudam na hora.
 2. "Definir metas do mês" → colocar uma meta de faturamento → o anel aparece com o percentual.
 3. Com campanhas sincronizadas: no Gerenciador, tentar um aumento que faça o mês passar do teto → aparece a pergunta de confirmação e o histórico registra `aguardando_aprovacao`.
+
+### Etapa 6 — Diretor v1: análise e recomendações (04/10/2026)
+
+**O que mudei**
+- Serviço `src/lib/diretor/`:
+  - `resumo.ts` monta um resumo só com dados do banco (tráfego dos últimos 14 dias e dos 14 anteriores, campanhas, site dos últimos 7 dias, vendas e metas do mês, limites). O que falta vira um aviso em texto, não um número.
+  - `claude.ts` chama a **Claude API** pelo SDK oficial (`@anthropic-ai/sdk`), modelo `claude-opus-5-5`, pedindo a resposta em JSON no formato de um schema zod (saída estruturada).
+  - `regras.ts` confere de novo cada recomendação: campanha tem de existir nos dados, mínimo de **7 dias** de dados (período de aprendizado), mínimo de **100 cliques**, e **5 conversões** para aumentar verba. O que não passa é descartado e listado na tela com o motivo.
+  - `gerar.ts` junta tudo e grava relatório + recomendações (status `proposta`).
+- Página **Diretor** (link no menu): relatório do dia, pontos de atenção, recomendações com **Aprovar / Recusar**, botão "Gerar relatório agora" (dono/admin, no máximo 1 a cada 10 minutos).
+- Cron diário `/api/diretor/cron` às 09h30 UTC (06h30 de Brasília), logo depois da sincronização. Protegido pelo mesmo `CRON_SECRET`.
+- Migração `20261004030000_etapa6_diretor.sql` (**não aplicada**): tabelas `diretor_relatorios` e `diretor_recomendacoes`, com RLS (leitura para membros, escrita só pelo servidor).
+- Variável nova `ANTHROPIC_API_KEY` no `.env.example`.
+- Testes em `src/lib/diretor/regras.test.ts`.
+
+**Decisões tomadas sozinho**
+- **Aprovar não executa nada nesta etapa** (como pede a Fase 5 da visão: "sem executar"). A execução com aprovação entra nas Etapas 9 e 10.
+- Sem `ANTHROPIC_API_KEY`, a página explica o passo a passo para criar a chave; sem a migração, avisa que falta aplicar. Nada quebra.
+- O resumo enviado à IA só tem números agregados. **Nenhum dado pessoal** (nem observação de venda) é enviado.
+- Não usei o recurso de "fallback" de modelo da API (é beta e eu não consegui confirmar que funciona junto com a saída estruturada). Se a IA recusar ou a resposta vier cortada, o relatório é registrado como erro com a explicação.
+- **Não cheguei a chamar a Claude API de verdade**: não posso ler o `.env.local` e não há chave no ambiente. O formato do pedido segue a documentação do SDK instalado (0.131.0) e compila; o primeiro teste real fica para o Jackson (está no roteiro).
+- Custo: cada relatório é uma chamada com poucos milhares de tokens. No modelo escolhido, a ordem de grandeza é de centavos de dólar por relatório; o valor exato aparece no console da Anthropic.
+- O plano Hobby da Vercel aceita cron 1x/dia; agora são dois crons (sincronização e Diretor). Se a Vercel recusar o segundo, a alternativa está em PENDENTE.
+
+**Como testar**
+1. Sem a chave: abrir Diretor → aparece a explicação do que falta.
+2. Aplicar a migração da Etapa 6, cadastrar `ANTHROPIC_API_KEY` na Vercel e clicar em "Gerar relatório agora".
+3. Conferir se os números citados batem com Tráfego, Site e Comercial. Aprovar uma recomendação e recusar outra.
