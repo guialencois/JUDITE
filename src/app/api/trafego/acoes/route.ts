@@ -23,7 +23,7 @@ export const runtime = "nodejs";
 const corpoSchema = z.object({
   workspaceId: z.uuid(),
   origem: z.enum(["painel", "automacao"]).default("painel"),
-  plataforma: z.enum(["google_ads", "facebook"]),
+  plataforma: z.enum(["google_ads", "facebook", "tiktok"]),
   // Por enquanto só campanhas: elas são as únicas que a JUDITE sabe a que workspace pertencem.
   tipoEntidade: z.literal("campanha").default("campanha"),
   entidadeId: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/),

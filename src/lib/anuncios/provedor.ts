@@ -15,6 +15,7 @@ import type { createAdminClient } from "@/lib/supabase/admin";
 import { NOME_PLATAFORMA, type AcaoAnuncio, type LinhaCampanha, type LinhaMetrica, type Plataforma } from "@/lib/trafego/tipos";
 import { provedorGoogle } from "./google";
 import { provedorMeta } from "./meta";
+import { provedorTikTok } from "./tiktok";
 
 type Admin = ReturnType<typeof createAdminClient>;
 
@@ -74,6 +75,11 @@ export async function provedorDoWorkspace(db: Admin, workspaceId: string, plataf
         gerente: typeof dados.gerente === "string" ? dados.gerente : null,
       }),
     };
+  }
+
+  if (plataforma === "tiktok") {
+    if (!segredos.access_token || !dados.conta) return { ok: false, motivo: "Conecte o TikTok em Conexões para ler e mudar as campanhas." };
+    return { ok: true, provedor: provedorTikTok({ token: segredos.access_token, moeda: typeof dados.moeda === "string" ? dados.moeda : null }) };
   }
 
   return { ok: false, motivo: `A leitura nativa de ${nome} ainda não está disponível.` };

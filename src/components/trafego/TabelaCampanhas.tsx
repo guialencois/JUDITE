@@ -8,10 +8,11 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { brl, inteiro, multiplicador, percent } from "@/lib/trafego/metricas";
+import { campanhaAtiva, NOME_PLATAFORMA, type Plataforma } from "@/lib/trafego/tipos";
 import { ModalOrcamento } from "./ModalOrcamento";
 
 export type LinhaCampanhaTabela = {
-  plataforma: "google_ads" | "facebook";
+  plataforma: Plataforma;
   campanhaId: string;
   nome: string;
   status: string | null;
@@ -65,7 +66,7 @@ export function TabelaCampanhas({ workspaceId, podeAgir, linhas }: Props) {
     }
   }
 
-  const ativa = (s: string | null) => (s ?? "").toUpperCase() === "ENABLED" || (s ?? "").toUpperCase() === "ACTIVE";
+  const ativa = campanhaAtiva;
 
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4">
@@ -114,7 +115,10 @@ export function TabelaCampanhas({ workspaceId, podeAgir, linhas }: Props) {
                       <span className={"absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all " + (ativa(l.status) ? "left-4" : "left-0.5")} />
                     </button>
                   </td>
-                  <td className="max-w-[260px] truncate py-2 pr-2 text-zinc-200">{l.nome}</td>
+                  <td className="max-w-[260px] py-2 pr-2">
+                    <span className="block truncate text-zinc-200">{l.nome}</span>
+                    <span className="block text-xs text-zinc-500">{NOME_PLATAFORMA[l.plataforma]}</span>
+                  </td>
                   <td className="py-2 pr-2 tabular-nums text-zinc-300">{brl(l.gasto)}</td>
                   <td className="py-2 pr-2 tabular-nums text-zinc-400">{inteiro(l.impressoes)}</td>
                   <td className="py-2 pr-2 tabular-nums text-zinc-400">{inteiro(l.cliques)}</td>

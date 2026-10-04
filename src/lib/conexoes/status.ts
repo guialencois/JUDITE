@@ -8,10 +8,12 @@ type Sessao = Awaited<ReturnType<typeof createClient>>;
 export const CONEXAO_DA_PLATAFORMA: Record<Plataforma, Provedor> = {
   google_ads: "google_ads",
   facebook: "meta",
+  tiktok: "tiktok",
 };
 const APELIDO: Record<Plataforma, string> = {
   google_ads: "o Google Ads",
   facebook: "a Meta",
+  tiktok: "o TikTok",
 };
 
 /**

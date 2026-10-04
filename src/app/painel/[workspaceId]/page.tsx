@@ -1,4 +1,5 @@
 import { podeAgir } from "@/lib/trafego/acesso";
+import { NOME_PLATAFORMA, type Plataforma } from "@/lib/trafego/tipos";
 import { cancelarConvite, convidar, salvarLimites } from "./actions";
 import { carregarWorkspace } from "./carregar";
 
@@ -55,7 +56,7 @@ export default async function WorkspacePage(props: PageProps<"/painel/[workspace
             {contas.map((c) => (
               <li key={c.plataforma + c.conta_externa} className="flex justify-between px-4 py-3 text-sm">
                 <span>{c.nome ?? c.conta_externa}</span>
-                <span className="text-zinc-500">{c.plataforma === "google_ads" ? "Google Ads" : "Meta Ads"} · {c.conta_externa}</span>
+                <span className="text-zinc-500">{NOME_PLATAFORMA[c.plataforma as Plataforma] ?? c.plataforma} · {c.conta_externa}</span>
               </li>
             ))}
           </ul>

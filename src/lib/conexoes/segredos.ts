@@ -2,7 +2,7 @@ import { cifrar, decifrar } from "@/lib/cripto";
 import type { createAdminClient } from "@/lib/supabase/admin";
 
 type Admin = ReturnType<typeof createAdminClient>;
-export type Provedor = "google_ads" | "meta";
+export type Provedor = "google_ads" | "meta" | "tiktok";
 
 /**
  * Lê a conexão de um workspace com os segredos já abertos. SOMENTE no servidor,
@@ -38,7 +38,9 @@ export async function gravarConexao(
   const pronta =
     provedor === "google_ads"
       ? Boolean(segredos.developer_token && segredos.client_id && segredos.client_secret && segredos.refresh_token && dados.cliente)
-      : Boolean(segredos.token && dados.conta);
+      : provedor === "tiktok"
+        ? Boolean(segredos.access_token && dados.conta)
+        : Boolean(segredos.token && dados.conta);
 
   const agora = new Date().toISOString();
   return db.from("conexoes").upsert({
@@ -48,8 +50,8 @@ export async function gravarConexao(
       ...dados,
       // Só "tem ou não tem": os valores secretos nunca vão para a tela.
       tem_developer_token: Boolean(segredos.developer_token),
-      tem_app_oauth: Boolean(segredos.client_id && segredos.client_secret),
-      tem_autorizacao: Boolean(segredos.refresh_token),
+      tem_app_oauth: Boolean((segredos.client_id && segredos.client_secret) || (segredos.app_id && segredos.secret)),
+      tem_autorizacao: Boolean(segredos.refresh_token || segredos.access_token),
     },
     segredo: Object.keys(segredos).length ? cifrar(segredos) : null,
     conectado_em: pronta ? agora : null,

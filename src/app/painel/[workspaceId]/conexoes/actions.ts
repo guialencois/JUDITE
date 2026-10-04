@@ -4,8 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { exigirDono } from "@/lib/conexoes/acesso";
-import { comTracos, META_GRAPH_URL, META_VERSAO, soDigitos } from "@/lib/conexoes/config";
-import { gravarConexao } from "@/lib/conexoes/segredos";
+import { comTracos, META_GRAPH_URL, META_VERSAO, soDigitos, TIKTOK_API_URL } from "@/lib/conexoes/config";
+import { gravarConexao, lerConexao } from "@/lib/conexoes/segredos";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 const wsSchema = z.uuid();
@@ -13,7 +13,7 @@ const pagina = (ws: string, sufixo: string) => `/painel/${ws}/conexoes?${sufixo}
 type Admin = ReturnType<typeof createAdminClient>;
 
 /** Liga a conta de anúncios ao workspace, sem deixar um workspace "tomar" a conta de outro. */
-async function registrarConta(db: Admin, workspaceId: string, plataforma: "google_ads" | "facebook", conta: string, nome: string | null) {
+async function registrarConta(db: Admin, workspaceId: string, plataforma: "google_ads" | "facebook" | "tiktok", conta: string, nome: string | null) {
   await db.from("trafego_contas").upsert(
     { workspace_id: workspaceId, plataforma, conta_externa: conta, nome, ativo: true },
     { onConflict: "plataforma,conta_externa", ignoreDuplicates: true },
@@ -132,8 +132,76 @@ export async function salvarMeta(formData: FormData) {
   redirect(pagina(ws, "aviso=meta-conectada"));
 }
 
+const tiktokAppSchema = z.object({
+  workspaceId: wsSchema,
+  appId: opcional(/^[0-9]{10,30}$/),
+  secret: opcional(/^[A-Za-z0-9]{20,100}$/),
+});
+
+/** Credenciais do app do TikTok for Business. Campo vazio mantém o valor já salvo. */
+export async function salvarTikTokApp(formData: FormData) {
+  const parsed = tiktokAppSchema.safeParse({
+    workspaceId: formData.get("workspaceId"),
+    appId: formData.get("appId") ?? "",
+    secret: formData.get("secret") ?? "",
+  });
+  const ws = String(formData.get("workspaceId"));
+  if (!parsed.success) redirect(pagina(ws, "erro=tiktok-app-dados"));
+  const dono = await exigirDono(parsed.data.workspaceId);
+  if (!dono) redirect(pagina(ws, "erro=so-dono"));
+
+  const { error } = await gravarConexao(createAdminClient(), parsed.data.workspaceId, "tiktok", dono.userId, {
+    segredos: { app_id: parsed.data.appId, secret: parsed.data.secret },
+  });
+  if (error) redirect(pagina(ws, "erro=salvar-tiktok"));
+  revalidatePath(`/painel/${ws}/conexoes`);
+  redirect(pagina(ws, "aviso=tiktok-app"));
+}
+
+const tiktokContaSchema = z.object({ workspaceId: wsSchema, conta: z.string().trim().regex(/^[0-9]{5,25}$/) });
+
+/** Escolhe qual conta de anúncios (advertiser) do TikTok este workspace usa, entre as autorizadas. */
+export async function salvarTikTok(formData: FormData) {
+  const parsed = tiktokContaSchema.safeParse({
+    workspaceId: formData.get("workspaceId"),
+    conta: formData.get("conta") ?? "",
+  });
+  const ws = String(formData.get("workspaceId"));
+  if (!parsed.success) redirect(pagina(ws, "erro=tiktok-dados"));
+  const dono = await exigirDono(parsed.data.workspaceId);
+  if (!dono) redirect(pagina(ws, "erro=so-dono"));
+
+  const db = createAdminClient();
+  const { segredos, dados } = await lerConexao(db, parsed.data.workspaceId, "tiktok");
+  if (!segredos.access_token) redirect(pagina(ws, "erro=tiktok-autorizar"));
+  const autorizadas = Array.isArray(dados.anunciantes) ? dados.anunciantes.map(String) : [];
+  if (autorizadas.length && !autorizadas.includes(parsed.data.conta)) redirect(pagina(ws, "erro=tiktok-conta"));
+
+  // Confere a conta no próprio TikTok antes de guardar (o token vai no cabeçalho, nunca na URL).
+  const busca = new URLSearchParams({ advertiser_ids: JSON.stringify([parsed.data.conta]) });
+  const teste = await fetch(`${TIKTOK_API_URL}/advertiser/info/?${busca.toString()}`, {
+    headers: { "Access-Token": segredos.access_token },
+    cache: "no-store",
+  }).catch(() => null);
+  const info = (await teste?.json().catch(() => null)) as {
+    code?: number; data?: { list?: { name?: string; currency?: string }[] };
+  } | null;
+  const anunciante = info?.code === 0 ? info.data?.list?.[0] : undefined;
+  if (!anunciante?.name) redirect(pagina(ws, "erro=tiktok-conta"));
+
+  if (!(await registrarConta(db, parsed.data.workspaceId, "tiktok", parsed.data.conta, anunciante.name))) {
+    redirect(pagina(ws, "erro=conta-de-outro"));
+  }
+  const { error } = await gravarConexao(db, parsed.data.workspaceId, "tiktok", dono.userId, {
+    dados: { conta: parsed.data.conta, nome: anunciante.name, moeda: anunciante.currency ?? null, validado_em: new Date().toISOString() },
+  });
+  if (error) redirect(pagina(ws, "erro=salvar-tiktok"));
+  revalidatePath(`/painel/${ws}/conexoes`);
+  redirect(pagina(ws, "aviso=tiktok-conectado"));
+}
+
 export async function desconectar(formData: FormData) {
-  const parsed = z.object({ workspaceId: wsSchema, provedor: z.enum(["google_ads", "meta"]) }).safeParse({
+  const parsed = z.object({ workspaceId: wsSchema, provedor: z.enum(["google_ads", "meta", "tiktok"]) }).safeParse({
     workspaceId: formData.get("workspaceId"),
     provedor: formData.get("provedor"),
   });

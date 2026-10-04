@@ -3,10 +3,10 @@
  * e formulários (só o dono). Os tokens nunca aparecem na tela depois de salvos.
  */
 
-import { googleRetorno, urlDoSite } from "@/lib/conexoes/config";
+import { googleRetorno, tiktokRetorno, urlDoSite } from "@/lib/conexoes/config";
 import { criptoConfigurada } from "@/lib/cripto";
 import { carregarWorkspace } from "../carregar";
-import { desconectar, salvarGoogle, salvarGoogleApp, salvarMeta } from "./actions";
+import { desconectar, salvarGoogle, salvarGoogleApp, salvarMeta, salvarTikTok, salvarTikTokApp } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +22,15 @@ const ERROS: Record<string, string> = {
   "meta-validacao": "A Meta recusou o token ou a conta. Confira se o usuário do sistema tem acesso a essa conta de anúncios.",
   "conta-de-outro": "Essa conta de anúncios já está ligada a outro workspace.",
   salvar: "Não foi possível salvar. Tente de novo.",
+  "salvar-tiktok": "Não foi possível salvar a conexão do TikTok. Se a migração da Etapa 4 ainda não foi aplicada no Supabase, aplique-a primeiro (veja docs/PENDENTE.md).",
+  "tiktok-app": "Salve primeiro o ID e a chave secreta do app do TikTok.",
+  "tiktok-app-dados": "Confira os valores: o ID do app tem só números e a chave secreta tem letras e números.",
+  "tiktok-state": "A autorização do TikTok não pôde ser confirmada. Tente de novo.",
+  "tiktok-cancelado": "A autorização no TikTok foi cancelada.",
+  "tiktok-token": "O TikTok não devolveu o acesso. Confira o ID e a chave secreta do app e tente de novo.",
+  "tiktok-autorizar": "Autorize a JUDITE no TikTok antes de escolher a conta.",
+  "tiktok-dados": "O ID da conta de anúncios do TikTok tem só números.",
+  "tiktok-conta": "Essa conta de anúncios não está entre as que você autorizou no TikTok.",
 };
 const AVISOS: Record<string, string> = {
   "google-app": "Credenciais do Google salvas (criptografadas).",
@@ -29,6 +38,9 @@ const AVISOS: Record<string, string> = {
   "google-conta": "ID do cliente do Google Ads salvo.",
   "meta-conectada": "Meta Ads conectada e testada com sucesso.",
   desconectado: "Conexão removida. O token foi apagado.",
+  "tiktok-app": "Credenciais do app do TikTok salvas (criptografadas).",
+  "tiktok-autorizado": "TikTok autorizado. Agora escolha a conta de anúncios.",
+  "tiktok-conectado": "TikTok Ads conectado e testado com sucesso.",
 };
 
 const campo = "w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100";
@@ -58,6 +70,10 @@ export default async function ConexoesPage(props: PageProps<"/painel/[workspaceI
     .eq("workspace_id", workspace.id);
   const google = linhas?.find((l) => l.provedor === "google_ads");
   const meta = linhas?.find((l) => l.provedor === "meta");
+  const tiktok = linhas?.find((l) => l.provedor === "tiktok");
+  const tDados = (tiktok?.dados ?? {}) as {
+    conta?: string; nome?: string; anunciantes?: string[]; tem_app_oauth?: boolean; tem_autorizacao?: boolean;
+  };
   const gDados = (google?.dados ?? {}) as {
     cliente?: string; gerente?: string | null;
     tem_developer_token?: boolean; tem_app_oauth?: boolean; tem_autorizacao?: boolean;
@@ -68,13 +84,14 @@ export default async function ConexoesPage(props: PageProps<"/painel/[workspaceI
   const cripto = criptoConfigurada();
   const site = await urlDoSite();
   const retorno = googleRetorno(site);
+  const retornoTikTok = tiktokRetorno(site);
 
   return (
     <main className="mx-auto w-full max-w-4xl space-y-8 px-4 py-6">
       <header>
         <h1 className="font-serif text-3xl">Conexões</h1>
         <p className="text-sm text-zinc-500">
-          Ligue as contas de anúncio direto na JUDITE, pelas APIs oficiais e gratuitas do Google e da Meta.
+          Ligue as contas de anúncio direto na JUDITE, pelas APIs oficiais e gratuitas do Google, da Meta e do TikTok.
           {!dono && " Só o dono do workspace pode conectar ou remover."}
         </p>
       </header>
@@ -264,6 +281,85 @@ export default async function ConexoesPage(props: PageProps<"/painel/[workspaceI
             <input type="hidden" name="workspaceId" value={workspace.id} />
             <input type="hidden" name="provedor" value="meta" />
             <button className="text-sm text-zinc-500 hover:text-rose-400">Remover conexão da Meta</button>
+          </form>
+        )}
+      </section>
+
+      {/* ------------------------------------------------------------ TIKTOK */}
+      <section className="space-y-4 rounded-xl border border-zinc-800 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-xl font-medium">TikTok Ads</h2>
+          <div className="flex flex-wrap gap-2">
+            <Selo ok={Boolean(tDados.tem_app_oauth)} sim="app" nao="app" />
+            <Selo ok={Boolean(tDados.tem_autorizacao)} sim="conta autorizada" nao="conta autorizada" />
+            <Selo ok={Boolean(tiktok?.conectado_em)} sim={"conectado" + (tDados.nome ? ": " + tDados.nome : "")} nao="não conectado" />
+          </div>
+        </div>
+
+        <details className="rounded-lg bg-zinc-900/60 p-3" open={!tiktok}>
+          <summary className="cursor-pointer text-sm font-medium">Passo a passo</summary>
+          <ol className="mt-3 list-decimal space-y-3 pl-5">
+            <li className={passo}>
+              Abra <code className={codigo}>business-api.tiktok.com</code>, entre com a conta do TikTok for Business e clique em
+              {" "}<strong>My Apps → Create New</strong> (cadastre-se como desenvolvedor, se pedir).
+            </li>
+            <li className={passo}>
+              No app, em <strong>Advertiser redirect URL</strong>, cole exatamente:
+              <span className="mt-1 block"><code className={codigo}>{retornoTikTok}</code></span>
+            </li>
+            <li className={passo}>
+              Marque as permissões de <strong>Ads Management</strong> (ler e gerenciar campanhas) e de <strong>Reporting</strong> (relatórios)
+              e envie o app para revisão. <span className="text-amber-200">O TikTok analisa o app antes de liberar; pode levar alguns dias.</span>
+            </li>
+            <li className={passo}>Depois de aprovado, copie o <strong>App ID</strong> e o <strong>Secret</strong> e cole abaixo.</li>
+            <li className={passo}>Clique em <strong>Autorizar no TikTok</strong> e, por fim, escolha a conta de anúncios.</li>
+          </ol>
+        </details>
+
+        {dono && cripto && (
+          <form action={salvarTikTokApp} className="space-y-2 rounded-lg border border-zinc-800 p-3">
+            <input type="hidden" name="workspaceId" value={workspace.id} />
+            <p className="text-sm font-medium">Credenciais do app do TikTok</p>
+            <p className="text-xs text-zinc-500">Ficam criptografadas e nunca são mostradas de novo. Deixe um campo vazio para manter o valor já salvo.</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <label className="text-xs text-zinc-400">App ID
+                <input name="appId" type="password" autoComplete="off" placeholder={tDados.tem_app_oauth ? "•••••• salvo" : ""} className={campo} />
+              </label>
+              <label className="text-xs text-zinc-400">Secret
+                <input name="secret" type="password" autoComplete="off" placeholder={tDados.tem_app_oauth ? "•••••• salvo" : ""} className={campo} />
+              </label>
+            </div>
+            <button className={botao}>Salvar credenciais</button>
+          </form>
+        )}
+
+        {dono && cripto && tDados.tem_app_oauth && (
+          <a href={`/api/conexoes/tiktok/iniciar?workspaceId=${workspace.id}`} className={botao + " inline-block"}>
+            {tDados.tem_autorizacao ? "Autorizar de novo no TikTok" : "Autorizar no TikTok"}
+          </a>
+        )}
+
+        {dono && cripto && tDados.tem_autorizacao && (
+          <form action={salvarTikTok} className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
+            <input type="hidden" name="workspaceId" value={workspace.id} />
+            <label className="text-xs text-zinc-400">Conta de anúncios (advertiser ID)
+              {tDados.anunciantes?.length ? (
+                <select name="conta" required defaultValue={tDados.conta ?? tDados.anunciantes[0]} className={campo}>
+                  {tDados.anunciantes.map((a) => <option key={a} value={a}>{a}</option>)}
+                </select>
+              ) : (
+                <input name="conta" required defaultValue={tDados.conta ?? ""} placeholder="7000000000000000000" className={campo} />
+              )}
+            </label>
+            <button className={botao}>Testar e salvar</button>
+          </form>
+        )}
+
+        {dono && tiktok && (
+          <form action={desconectar}>
+            <input type="hidden" name="workspaceId" value={workspace.id} />
+            <input type="hidden" name="provedor" value="tiktok" />
+            <button className="text-sm text-zinc-500 hover:text-rose-400">Remover conexão do TikTok</button>
           </form>
         )}
       </section>

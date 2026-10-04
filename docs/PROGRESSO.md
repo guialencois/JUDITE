@@ -70,3 +70,23 @@ arquivos principais, decisões tomadas sozinho e o que o Jackson precisa testar.
 **Como testar**
 1. Com o Google conectado mas o token ainda em teste: Tráfego → Sincronizar dados. Deve aparecer a mensagem sobre o acesso de teste, sem quebrar a tela.
 2. Depois da aprovação: sincronizar e conferir as campanhas no Gerenciador.
+
+### Etapa 4 — TikTok Ads (04/10/2026)
+
+**O que mudei**
+- Novo `src/lib/anuncios/tiktok.ts` (TikTok Marketing API v1.3): relatório diário por anúncio, campanhas (status e orçamento diário), pausar/ativar e mudar orçamento.
+- Conexão em Conexões: passo a passo, formulário do app (App ID e Secret, criptografados), botão "Autorizar no TikTok" (OAuth com `state` em cookie protegido, rotas `/api/conexoes/tiktok/iniciar` e `/callback`) e escolha da conta de anúncios, testada no TikTok antes de salvar.
+- `tiktok` virou a terceira plataforma em todo o painel: tipos, aviso de conexões, filtro por plataforma no Dashboard (novo), nome da plataforma em cada linha do Gerenciador e nas ações.
+- Migração `20261004010000_etapa4_tiktok.sql` (**não aplicada**): amplia os `check` de `trafego_contas`, `trafego_metricas_dia`, `trafego_campanhas` e `conexoes` para aceitar `tiktok`.
+
+**Decisões tomadas sozinho**
+- Pedi ao relatório do TikTok só as métricas de que tenho certeza (gasto, impressões, cliques, conversões, nomes). **Não leio o valor das compras do TikTok** (receita fica 0) para não arriscar um nome de campo errado, que faria o pedido inteiro falhar. O faturamento real vem das vendas registradas na página Comercial (Etapa 5). Está em PENDENTE para conferir com a conta real.
+- Períodos longos são quebrados em janelas de 30 dias (limite do relatório diário do TikTok).
+- Campanha do TikTok com verba total (não diária) aparece sem orçamento diário, para os freios não compararem coisas diferentes.
+- Antes de aplicar a migração, salvar a conexão do TikTok falha com uma mensagem que explica isso. O resto do painel não é afetado.
+- Não chamei a API do TikTok com credenciais reais.
+
+**Como testar**
+1. Aplicar a migração da Etapa 4 (ver PENDENTE).
+2. Conexões → TikTok Ads: seguir o passo a passo. Sem app aprovado pelo TikTok, só dá para ver a tela e salvar as credenciais.
+3. Dashboard de Tráfego: os botões "Todas as plataformas / Google Ads / Meta Ads / TikTok Ads" filtram os números.

@@ -7,14 +7,19 @@
  *   0    = a plataforma informa e o valor é zero
  */
 
-export type Plataforma = "google_ads" | "facebook";
+export type Plataforma = "google_ads" | "facebook" | "tiktok";
 
-export const PLATAFORMAS: Plataforma[] = ["google_ads", "facebook"];
+export const PLATAFORMAS: Plataforma[] = ["google_ads", "facebook", "tiktok"];
 
 export const NOME_PLATAFORMA: Record<Plataforma, string> = {
   google_ads: "Google Ads",
   facebook: "Meta Ads",
+  tiktok: "TikTok Ads",
 };
+
+/** Cada plataforma chama "ligada" de um jeito: Google ENABLED, Meta ACTIVE, TikTok ENABLE. */
+export const campanhaAtiva = (status: string | null | undefined): boolean =>
+  ["ENABLED", "ACTIVE", "ENABLE"].includes((status ?? "").toUpperCase());
 
 export type LinhaMetrica = {
   data: string;
