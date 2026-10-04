@@ -11,6 +11,9 @@ import { headers } from "next/headers";
 export const GOOGLE_ESCOPO = "https://www.googleapis.com/auth/adwords";
 export const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 export const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
+export const GOOGLE_ADS_URL = "https://googleads.googleapis.com";
+/** Versão da Google Ads API. Conferida em 04/10/2026: v22 a v26 respondem; v26 é a mais nova. */
+export const GOOGLE_ADS_VERSAO = "v26";
 export const META_GRAPH_URL = "https://graph.facebook.com";
 /** Versão da Graph/Marketing API. Conferida em 04/10/2026: v26.0 é a mais nova que responde. */
 export const META_VERSAO = "v26.0";

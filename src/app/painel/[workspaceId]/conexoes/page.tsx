@@ -101,6 +101,12 @@ export default async function ConexoesPage(props: PageProps<"/painel/[workspaceI
           </div>
         </div>
 
+        <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+          A leitura e as ações no Google Ads dependem da <strong>aprovação do developer token</strong> pelo Google (Parte A,
+          &quot;Acesso básico&quot;). Enquanto o token estiver em acesso de teste, a sincronização falha com uma mensagem explicando isso;
+          nada quebra e as outras plataformas continuam funcionando.
+        </p>
+
         <details className="rounded-lg bg-zinc-900/60 p-3" open={!app.developerToken}>
           <summary className="cursor-pointer text-sm font-medium">Parte A — Developer token (pedido ao Google, uma vez só)</summary>
           <ol className="mt-3 list-decimal space-y-3 pl-5">

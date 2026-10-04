@@ -51,3 +51,22 @@ arquivos principais, decisões tomadas sozinho e o que o Jackson precisa testar.
 1. Sem conexão: abra Tráfego. Deve aparecer o aviso "Meta Ads: conecte a Meta em Conexões…".
 2. Conecte a Meta em Conexões (token do usuário do sistema + ID da conta) e clique em "Sincronizar dados" no Tráfego.
 3. No Gerenciador, as campanhas da Meta devem aparecer com status e orçamento.
+
+### Etapa 3 — Google Ads nativo (04/10/2026)
+
+**O que mudei**
+- Novo `src/lib/anuncios/google.ts` (Google Ads API, REST, versão `v26`): renova o access token com o refresh token salvo, lê métricas diárias por campanha e o estado/orçamento das campanhas com consultas GAQL (`googleAds:search`), pausa/ativa (`campaigns:mutate`) e muda o orçamento diário em micros (`campaignBudgets:mutate`). Envia os cabeçalhos `developer-token` e, quando há conta de administrador, `login-customer-id`.
+- `provedorDoWorkspace` agora atende o Google: se faltar alguma parte da conexão, a mensagem diz exatamente qual (app OAuth, autorização, developer token ou ID do cliente).
+- Página Conexões: aviso de que o Google Ads depende da aprovação do developer token.
+- Testes em `src/lib/anuncios/google.test.ts`.
+
+**Decisões tomadas sozinho**
+- Versão: testei sem credenciais; v22 a v26 respondem. Usei a **v26** (constante `GOOGLE_ADS_VERSAO`).
+- A leitura é **por campanha**, não por anúncio, porque Performance Max e campanhas inteligentes não expõem anúncio. No ranking de anúncios do Dashboard, o Google aparece pelo nome da campanha (o painel já previa isso).
+- Campanha com **orçamento compartilhado** não é alterada pela JUDITE (mudaria outras campanhas junto). A tela mostra o motivo.
+- Erro `DEVELOPER_TOKEN_NOT_APPROVED` vira a frase: "O developer token do Google Ads ainda está em acesso de teste…".
+- Não chamei a API do Google com credenciais reais.
+
+**Como testar**
+1. Com o Google conectado mas o token ainda em teste: Tráfego → Sincronizar dados. Deve aparecer a mensagem sobre o acesso de teste, sem quebrar a tela.
+2. Depois da aprovação: sincronizar e conferir as campanhas no Gerenciador.

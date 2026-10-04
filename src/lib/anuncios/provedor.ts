@@ -13,6 +13,7 @@ import { lerConexao } from "@/lib/conexoes/segredos";
 import { CONEXAO_DA_PLATAFORMA } from "@/lib/conexoes/status";
 import type { createAdminClient } from "@/lib/supabase/admin";
 import { NOME_PLATAFORMA, type AcaoAnuncio, type LinhaCampanha, type LinhaMetrica, type Plataforma } from "@/lib/trafego/tipos";
+import { provedorGoogle } from "./google";
 import { provedorMeta } from "./meta";
 
 type Admin = ReturnType<typeof createAdminClient>;
@@ -52,6 +53,27 @@ export async function provedorDoWorkspace(db: Admin, workspaceId: string, plataf
   if (plataforma === "facebook") {
     if (!segredos.token || !dados.conta) return { ok: false, motivo: "Conecte a Meta em Conexões para ler e mudar as campanhas." };
     return { ok: true, provedor: provedorMeta({ token: segredos.token, moeda: typeof dados.moeda === "string" ? dados.moeda : null }) };
+  }
+
+  if (plataforma === "google_ads") {
+    if (!segredos.client_id || !segredos.client_secret) {
+      return { ok: false, motivo: "Conecte o Google Ads em Conexões: falta o app OAuth (Parte B)." };
+    }
+    if (!segredos.refresh_token) return { ok: false, motivo: "Conecte o Google Ads em Conexões: falta autorizar a conta (Parte C)." };
+    if (!segredos.developer_token) {
+      return { ok: false, motivo: "Falta o developer token do Google Ads (Parte A em Conexões). Ele depende de aprovação do Google." };
+    }
+    if (!dados.cliente) return { ok: false, motivo: "Informe o ID do cliente do Google Ads em Conexões." };
+    return {
+      ok: true,
+      provedor: provedorGoogle({
+        developerToken: segredos.developer_token,
+        clientId: segredos.client_id,
+        clientSecret: segredos.client_secret,
+        refreshToken: segredos.refresh_token,
+        gerente: typeof dados.gerente === "string" ? dados.gerente : null,
+      }),
+    };
   }
 
   return { ok: false, motivo: `A leitura nativa de ${nome} ainda não está disponível.` };
