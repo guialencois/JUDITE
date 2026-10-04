@@ -90,3 +90,27 @@ arquivos principais, decisões tomadas sozinho e o que o Jackson precisa testar.
 1. Aplicar a migração da Etapa 4 (ver PENDENTE).
 2. Conexões → TikTok Ads: seguir o passo a passo. Sem app aprovado pelo TikTok, só dá para ver a tela e salvar as credenciais.
 3. Dashboard de Tráfego: os botões "Todas as plataformas / Google Ads / Meta Ads / TikTok Ads" filtram os números.
+
+### Etapa 5 — Comercial e Budget & ROI (04/10/2026)
+
+**O que mudei**
+- Nova página **Comercial** (`/painel/[workspaceId]/comercial`, link no menu): cartões de faturamento, vendas, ticket médio, gasto em anúncios, **ROAS real** (vendas registradas ÷ gasto) e **CAC**; barra do orçamento mensal; **metas do mês com anéis de progresso**; formulário para **registrar venda do WhatsApp** (data, produto, pessoas, valor, origem, campanha, observação); desempenho por produto e por origem; lista de vendas do mês (dono/admin podem apagar); navegação entre meses.
+- Novo limite **Orçamento mensal máximo** (padrão R$ 2.000) na tela Limites da IA.
+- **Freio mensal** em `src/lib/trafego/limites.ts`: projeta o gasto até o fim do mês (já gasto + orçamentos diários das campanhas ligadas × dias restantes). Aumento de verba ou **ativação de campanha** que passe do teto vira `aguardando_aprovacao`. Reduzir verba e pausar nunca são barrados.
+- Padrão de variação por ajuste caiu de 50% para **10%** no código e na migração.
+- A lógica de agir numa campanha saiu da rota e foi para `src/lib/trafego/executar.ts` (`executarAcao`): é o único caminho para mudar campanha, reutilizado depois pelo Diretor e pela autonomia. A rota `/api/trafego/acoes` continua igual por fora.
+- Migração `20261004020000_etapa5_orcamento_mensal.sql` (**não aplicada**).
+- Testes: `limites.test.ts` (freios diário, percentual e mensal, datas em horário de Brasília) e `comercial/contas.test.ts`.
+
+**Decisões tomadas sozinho**
+- A página Comercial usa as tabelas `trafego_vendas` e `trafego_metas`, que **já existiam** no banco, então funciona antes de qualquer migração. Só o campo "Orçamento mensal máximo" depende da migração; sem ela, a tela avisa e os freios usam o padrão de R$ 2.000.
+- Na migração, só troco 50% → 10% para quem ainda está no padrão antigo (valor exatamente 50). Quem já escolheu outro número não é alterado. **Atenção, Jackson:** depois de aplicar, aumentos acima de 10% de uma vez vão pedir confirmação.
+- "Gasto do mês" é o que a sincronização já gravou (até ontem). O mês vira no horário de Brasília.
+- Data de venda no futuro é recusada (quase sempre é erro de digitação).
+- Meta com campo vazio ou zero = sem meta naquela métrica.
+- Em investimento e CAC, o anel trata o alvo como **limite** (ficar abaixo é bom).
+
+**Como testar**
+1. Comercial → registrar uma venda (ex.: produto, 2 pessoas, um valor). Os cartões e as tabelas mudam na hora.
+2. "Definir metas do mês" → colocar uma meta de faturamento → o anel aparece com o percentual.
+3. Com campanhas sincronizadas: no Gerenciador, tentar um aumento que faça o mês passar do teto → aparece a pergunta de confirmação e o histórico registra `aguardando_aprovacao`.

@@ -55,7 +55,11 @@ const limitesSchema = z.object({
   orcamento_max_sem_aprovacao: z.coerce.number().min(0).max(5000),
   aumento_max_por_vez_percent: z.coerce.number().min(0).max(100),
   custos_percent: z.coerce.number().min(0).max(100),
+  orcamento_mensal_max: z.coerce.number().min(0).max(1_000_000),
 });
+
+/** Limites criados depois da primeira versão: só existem no banco após a migração correspondente. */
+const LIMITES_NOVOS = new Set(["orcamento_mensal_max"]);
 
 export async function salvarLimites(formData: FormData) {
   const parsed = limitesSchema.safeParse(Object.fromEntries(formData));
@@ -73,6 +77,8 @@ export async function salvarLimites(formData: FormData) {
       .update({ valor, atualizado_por: auth.user.id, atualizado_em: new Date().toISOString() }, { count: "exact" })
       .eq("workspace_id", workspaceId)
       .eq("chave", chave);
+    // Limite novo ainda sem linha no banco (migração não aplicada): avisa em vez de fingir que salvou.
+    if (!error && count === 0 && LIMITES_NOVOS.has(chave)) redirect(`${base}?erro=limites-migracao`);
     if (error || count === 0) redirect(`${base}?erro=limites`);
   }
 

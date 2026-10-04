@@ -48,9 +48,10 @@ export function TabelaCampanhas({ workspaceId, podeAgir, linhas }: Props) {
       const dados = await r.json().catch(() => ({}));
 
       if (r.status === 409 && dados?.precisaAprovacao) {
-        const segue = window.confirm(
-          dados.motivo + "\n\nConfirma mesmo assim o valor de " + brl(Number(dados.valor)) + " por dia?",
-        );
+        const pergunta = dados.valor === null || dados.valor === undefined
+          ? "Confirma mesmo assim?"
+          : "Confirma mesmo assim o valor de " + brl(Number(dados.valor)) + " por dia?";
+        const segue = window.confirm(dados.motivo + "\n\n" + pergunta);
         if (!segue) return false;
         return chamar({ ...corpo, confirmado: true }, chave);
       }

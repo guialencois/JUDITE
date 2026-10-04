@@ -1,4 +1,5 @@
 import { podeAgir } from "@/lib/trafego/acesso";
+import { PADRAO_AUMENTO_PERCENT, PADRAO_MAX_SEM_APROVACAO, PADRAO_MENSAL_MAX } from "@/lib/trafego/limites";
 import { NOME_PLATAFORMA, type Plataforma } from "@/lib/trafego/tipos";
 import { cancelarConvite, convidar, salvarLimites } from "./actions";
 import { carregarWorkspace } from "./carregar";
@@ -6,6 +7,7 @@ import { carregarWorkspace } from "./carregar";
 const ERROS: Record<string, string> = {
   convite: "Não foi possível criar o convite. Confira o e-mail (ele pode já ter sido convidado).",
   limites: "Não foi possível salvar os limites. Confira os valores.",
+  "limites-migracao": "Os outros limites foram salvos, mas o orçamento mensal ainda não existe no banco: aplique a migração da Etapa 5 no Supabase (veja docs/PENDENTE.md). Até lá vale o padrão de R$ 2.000.",
 };
 const AVISOS: Record<string, string> = {
   convite: "Convite criado. A pessoa já pode criar a conta com esse e-mail na tela de login.",
@@ -16,7 +18,15 @@ const PAPEIS: Record<string, string> = { owner: "Dono", admin: "Admin", member: 
 const ROTULOS_LIMITE: Record<string, { rotulo: string; ajuda: string }> = {
   orcamento_max_sem_aprovacao: { rotulo: "Orçamento máximo sem aprovação (R$/dia)", ajuda: "Acima disso a JUDITE pede sua confirmação." },
   aumento_max_por_vez_percent: { rotulo: "Aumento máximo por vez (%)", ajuda: "Aumentos maiores pedem confirmação." },
+  orcamento_mensal_max: { rotulo: "Orçamento mensal máximo (R$)", ajuda: "Soma de todas as plataformas no mês. O que passar disso pede confirmação." },
   custos_percent: { rotulo: "Custos do negócio (% do faturamento)", ajuda: "Usado para calcular lucro e margem." },
+};
+
+/** Valor mostrado quando o limite ainda não está gravado no banco (é o mesmo padrão que os freios usam). */
+const PADROES_LIMITE: Record<string, number> = {
+  orcamento_max_sem_aprovacao: PADRAO_MAX_SEM_APROVACAO,
+  aumento_max_por_vez_percent: PADRAO_AUMENTO_PERCENT,
+  orcamento_mensal_max: PADRAO_MENSAL_MAX,
 };
 
 const campo = "w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100";
@@ -67,7 +77,7 @@ export default async function WorkspacePage(props: PageProps<"/painel/[workspace
 
       <section className="space-y-3">
         <h2 className="text-lg font-medium">Limites da IA</h2>
-        <form action={salvarLimites} className="grid gap-4 rounded-xl border border-zinc-800 p-4 sm:grid-cols-3">
+        <form action={salvarLimites} className="grid gap-4 rounded-xl border border-zinc-800 p-4 sm:grid-cols-2 lg:grid-cols-4">
           <input type="hidden" name="workspaceId" value={workspace.id} />
           {Object.entries(ROTULOS_LIMITE).map(([chave, info]) => (
             <label key={chave} className="space-y-1 text-sm">
@@ -79,13 +89,13 @@ export default async function WorkspacePage(props: PageProps<"/painel/[workspace
                 step="1"
                 required
                 disabled={!gestor}
-                defaultValue={Number(config?.find((c) => c.chave === chave)?.valor ?? 0)}
+                defaultValue={Number(config?.find((c) => c.chave === chave)?.valor ?? PADROES_LIMITE[chave] ?? 0)}
                 className={campo}
               />
               <span className="block text-xs text-zinc-500">{info.ajuda}</span>
             </label>
           ))}
-          {gestor && <div className="sm:col-span-3"><button className={botao}>Salvar limites</button></div>}
+          {gestor && <div className="sm:col-span-2 lg:col-span-4"><button className={botao}>Salvar limites</button></div>}
         </form>
       </section>
 
