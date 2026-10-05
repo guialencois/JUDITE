@@ -13,6 +13,7 @@ export default async function WorkspaceLayout(props: LayoutProps<"/painel/[works
           <Link href="/painel" className="text-zinc-500 hover:text-zinc-300">JUDITE</Link>
           <span className="font-medium text-zinc-100">{workspace.name}</span>
           <Link href={base} className="text-zinc-400 hover:text-amber-400">Visão geral</Link>
+          <Link href={`${base}/diretor-trafego`} className="text-zinc-400 hover:text-amber-400">Diretor de Tráfego</Link>
           <Link href={`${base}/diretor`} className="text-zinc-400 hover:text-amber-400">Diretor</Link>
           <Link href={`${base}/trafego`} className="text-zinc-400 hover:text-amber-400">Tráfego</Link>
           <Link href={`${base}/trafego/gerenciador`} className="text-zinc-400 hover:text-amber-400">Gerenciador</Link>

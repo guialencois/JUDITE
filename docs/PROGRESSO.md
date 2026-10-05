@@ -305,3 +305,33 @@ O que falta fazer (migrações, variáveis, liberações e o roteiro de testes) 
 
 **Como testar:** cadastrar `GEMINI_API_KEY` na Vercel → Redeploy → Diretor → "Gerar relatório agora"; depois
 Creative Studio → "Gerar variações" e Campanhas → "Pedir rascunho".
+
+## Diretor de Tráfego: propostas automáticas e fila de aprovação (04/10/2026)
+
+**Pedido do Jackson:** um espaço no site em que a JUDITE age como diretora de tráfego autônoma, inclusive gerando
+campanhas, e ele avalia.
+
+**O que mudou**
+- Página nova `/painel/[workspaceId]/diretor-trafego` (no menu, "Diretor de Tráfego"). Mostra a situação (propostas,
+  autonomia, modo simulado/real), a fila **Para você avaliar** e **O que a JUDITE fez sozinha**.
+- A fila junta: campanhas novas propostas (aprovar cria PAUSADA), campanhas pausadas esperando ativação, ações que a
+  autonomia deixou `aguardando_aprovacao` e recomendações de verba do relatório. Cada item tem Aprovar e Recusar/Dispensar.
+- `src/lib/campanhas/propor.ts`: a JUDITE escolhe sozinha um produto (regra fixa, testada) e monta o rascunho com a IA.
+  Roda no cron diário, depois do relatório, e pelo botão "Pedir uma campanha nova agora".
+- `src/lib/campanhas/gravar.ts`: o código de montar e gravar rascunho saiu de `campanhas/actions.ts` para ser reaproveitado.
+- Ação `decidirAcaoPendente`: aprovar aplica pelo mesmo caminho do Gerenciador (`executarAcao`, com os freios).
+- Migração `20261005010000_diretor_trafego_aprovacoes.sql` (NÃO aplicada): status `aprovada` e `dispensada` em `trafego_acoes`.
+
+**Decisões**
+- Propor campanha **não depende da chave de autonomia**: é só um rascunho, como as recomendações do relatório. Nada é
+  criado nem gasto sem a aprovação do dono, a campanha nasce pausada e ativar continua sendo outra aprovação.
+- Freios da proposta: no máximo 1 por dia pelo cron, no máximo 2 esperando avaliação, não repete produto que já tem
+  campanha em andamento nem produto recusado nos últimos 14 dias. Sem produto cadastrado, não propõe.
+- Aprovar/ativar campanha: só o dono (como já era). Aprovar ação de verba: dono ou admin (como no Gerenciador).
+- A fila mostra só os últimos 14 dias de ações e recomendações, para não aprovar decisão baseada em dado velho.
+- Cada proposta diária é mais uma chamada à IA por workspace (duas por dia com o relatório).
+
+**Limitação:** a geração real não foi testada (sem chave de IA no ambiente). O nome da restrição que a migração troca
+(`trafego_acoes_status_check`) é o padrão do Postgres; não conferi no banco.
+
+**Como testar:** item 12 do roteiro em `docs/PENDENTE.md`.

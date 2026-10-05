@@ -10,7 +10,9 @@ import type { Plataforma } from "@/lib/trafego/tipos";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { papelNoWorkspace, podeAgir } from "@/lib/trafego/acesso";
 
-const pagina = (ws: string, sufixo: string) => `/painel/${ws}/diretor?${sufixo}`;
+const pagina = (ws: string, sufixo: string, tela = "diretor") => `/painel/${ws}/${tela}?${sufixo}`;
+/** As decisões também são tomadas na página Diretor de Tráfego: o formulário diz para onde voltar. */
+const telaDeVolta = (formData: FormData) => (formData.get("voltar") === "diretor-trafego" ? "diretor-trafego" : "diretor");
 /** Intervalo mínimo entre relatórios pedidos pelo botão (cada um custa uma chamada à IA). */
 const INTERVALO_MINIMO_MS = 10 * 60 * 1000;
 
@@ -57,9 +59,10 @@ export async function decidir(formData: FormData) {
   });
   if (!parsed.success) redirect("/painel");
   const { workspaceId: ws, recomendacaoId, decisao } = parsed.data;
+  const tela = telaDeVolta(formData);
   const acesso = await papelNoWorkspace(ws);
   if (!acesso) redirect("/login");
-  if (!podeAgir(acesso.papel)) redirect(pagina(ws, "erro=papel"));
+  if (!podeAgir(acesso.papel)) redirect(pagina(ws, "erro=papel", tela));
 
   const db = createAdminClient();
   const decidido = { decidido_por: acesso.userId, decidido_em: new Date().toISOString() };
@@ -69,11 +72,12 @@ export async function decidir(formData: FormData) {
     .eq("id", recomendacaoId).eq("workspace_id", ws).eq("status", "proposta")
     .select("tipo, titulo, plataforma, campanha_id, valor_sugerido").maybeSingle();
   revalidatePath(`/painel/${ws}/diretor`);
-  if (!rec) redirect(pagina(ws, "erro=decisao"));
-  if (decisao === "recusar") redirect(pagina(ws, "aviso=recusada"));
+  revalidatePath(`/painel/${ws}/diretor-trafego`);
+  if (!rec) redirect(pagina(ws, "erro=decisao", tela));
+  if (decisao === "recusar") redirect(pagina(ws, "aviso=recusada", tela));
 
   const acao = ACAO_DA_RECOMENDACAO[rec.tipo as string];
-  if (!acao || !rec.plataforma || !rec.campanha_id) redirect(pagina(ws, "aviso=aprovada"));
+  if (!acao || !rec.plataforma || !rec.campanha_id) redirect(pagina(ws, "aviso=aprovada", tela));
 
   const r = await executarAcao(db, {
     workspaceId: ws, origem: "painel", usuarioId: acesso.userId, plataforma: rec.plataforma as Plataforma,
@@ -84,33 +88,37 @@ export async function decidir(formData: FormData) {
   await db.from("diretor_recomendacoes")
     .update({ status: r.tipo === "aplicada" ? "executada" : "aprovada", resultado: resultado.slice(0, 500) })
     .eq("id", recomendacaoId).eq("workspace_id", ws);
-  redirect(pagina(ws, r.tipo === "aplicada" ? "aviso=executada" : "erro=execucao"));
+  redirect(pagina(ws, r.tipo === "aplicada" ? "aviso=executada" : "erro=execucao", tela));
 }
 
 /** Liga a autonomia. SÓ O DONO, e só marcando a caixa de confirmação. */
 export async function ligarAutonomia(formData: FormData) {
   const ws = String(formData.get("workspaceId"));
+  const tela = telaDeVolta(formData);
   if (!z.uuid().safeParse(ws).success) redirect("/painel");
   const dono = await exigirDono(ws);
-  if (!dono) redirect(pagina(ws, "erro=so-dono"));
-  if (formData.get("ciente") !== "sim") redirect(pagina(ws, "erro=ciente"));
+  if (!dono) redirect(pagina(ws, "erro=so-dono", tela));
+  if (formData.get("ciente") !== "sim") redirect(pagina(ws, "erro=ciente", tela));
   const agora = new Date().toISOString();
   const { error } = await createAdminClient().from("autonomia")
     .upsert({ workspace_id: ws, ligada: true, atualizado_em: agora, atualizado_por: dono.userId, ligada_em: agora }, { onConflict: "workspace_id" });
   revalidatePath(`/painel/${ws}/diretor`);
-  redirect(pagina(ws, error ? "erro=autonomia" : "aviso=autonomia-ligada"));
+  revalidatePath(`/painel/${ws}/diretor-trafego`);
+  redirect(pagina(ws, error ? "erro=autonomia" : "aviso=autonomia-ligada", tela));
 }
 
 /** "Parar tudo": desliga a autonomia na hora. Dono ou admin (parar é sempre permitido a quem gerencia). */
 export async function pararTudo(formData: FormData) {
   const ws = String(formData.get("workspaceId"));
+  const tela = telaDeVolta(formData);
   if (!z.uuid().safeParse(ws).success) redirect("/painel");
   const acesso = await papelNoWorkspace(ws);
   if (!acesso) redirect("/login");
-  if (!podeAgir(acesso.papel)) redirect(pagina(ws, "erro=papel"));
+  if (!podeAgir(acesso.papel)) redirect(pagina(ws, "erro=papel", tela));
   const agora = new Date().toISOString();
   const { error } = await createAdminClient().from("autonomia")
     .upsert({ workspace_id: ws, ligada: false, atualizado_em: agora, atualizado_por: acesso.userId, desligada_em: agora }, { onConflict: "workspace_id" });
   revalidatePath(`/painel/${ws}/diretor`);
-  redirect(pagina(ws, error ? "erro=autonomia" : "aviso=autonomia-desligada"));
+  revalidatePath(`/painel/${ws}/diretor-trafego`);
+  redirect(pagina(ws, error ? "erro=autonomia" : "aviso=autonomia-desligada", tela));
 }

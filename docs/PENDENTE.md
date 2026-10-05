@@ -2,7 +2,7 @@
 
 > Atualizado em 04/10/2026, no fim do modo autônomo. As 10 etapas foram implementadas na branch
 > `desenvolvimento` (nada foi para a `main`). Tudo compila (`npm run lint` e `npm run build` passam)
-> e os 87 testes automáticos passam (`npx vitest run`).
+> e os 95 testes automáticos passam (`npx vitest run`).
 >
 > **O que NÃO foi feito por mim, de propósito:** nenhuma migração foi aplicada, nenhuma API de
 > plataforma foi chamada com credenciais, o `.env.local` não foi lido, e nada foi publicado em produção.
@@ -36,6 +36,7 @@ Peça ao Claude no chat para revisar cada arquivo antes, se quiser.
 | 5 | `20261004050000_etapa8_creative_learning.sql` | Tabelas `produtos`, `criativos`, `hipoteses`, `experimentos`, `aprendizados`. |
 | 6 | `20261004060000_etapa9_campaign_manager.sql` | Tabela `campanha_rascunhos`. **Precisa da nº 5 antes.** |
 | 7 | `20261004070000_etapa10_autonomia.sql` | Tabela `autonomia` (chave ligada/desligada por workspace; nasce desligada). |
+| 8 | `20261005010000_diretor_trafego_aprovacoes.sql` | Permite marcar uma ação da autonomia como `aprovada` ou `dispensada` na página **Diretor de Tráfego**. Só amplia uma lista de valores. Sem ela, a página funciona, mas os botões Aprovar/Dispensar dessas ações avisam que falta a migração. |
 
 Observações:
 - Todas as tabelas novas têm `workspace_id` e RLS ligado: membros leem; escrita só pelo servidor ou por dono/admin.
@@ -86,9 +87,9 @@ Nada ficou travado, mas estes pontos **não puderam ser testados de verdade** e 
    ativar e mudar orçamento estão prontos.
 4. **Campaign Manager no modo real** cria só a "casca" da campanha (nome, objetivo, orçamento), pausada. Conjunto de
    anúncios e anúncios são finalizados na plataforma. Decidi não inventar os campos de público e criativo da API.
-5. **Aprovações pendentes da automação.** Quando a autonomia (ou um aumento pela tela) passa de um limite, a ação fica
-   `aguardando_aprovacao` no histórico. Hoje **não há um botão "aprovar" nesse histórico**: para aplicar, refaça a
-   mudança no Gerenciador e confirme. Uma fila de aprovações única seria um bom próximo passo.
+5. **Aprovações pendentes da automação: resolvido.** A página **Diretor de Tráfego** junta numa fila só as campanhas
+   propostas, as ativações, as ações que a autonomia deixou `aguardando_aprovacao` e as recomendações de verba, cada uma
+   com Aprovar e Recusar/Dispensar. Precisa da migração nº 8 para as ações da autonomia.
 6. **Autonomia e conversões.** A autonomia só pausa por "zero conversões" se a plataforma mede conversão em alguma
    campanha. Como a venda do Guia Lençóis acontece no WhatsApp, é provável que ela quase nunca aja até existir um
    evento de conversão configurado (ex.: clique no WhatsApp como conversão no pixel). É o comportamento seguro.
@@ -172,6 +173,17 @@ migrações (passos 1 a 3), depois aplicar as 7 migrações e seguir.
 - [ ] Clique em **Parar tudo** → volta a "Desligada".
 - [ ] **Deixe desligada** por enquanto.
 
-### 12. Se tudo estiver certo
+### 12. Diretor de Tráfego (página nova, no menu)
+- [ ] A página abre com três quadros: Propostas de campanha, Autonomia sobre a verba e Criação de campanhas (deve dizer **Modo simulado**).
+- [ ] Sem produto cadastrado, aparece o aviso para cadastrar no Creative Studio. Cadastre um produto de verdade.
+- [ ] Clique em **Pedir uma campanha nova agora** (leva até 1 minuto). A proposta aparece em "Para você avaliar", com
+      plataforma, objetivo, orçamento por dia, público e o porquê. **Confira se ela não inventou preço nem número.**
+- [ ] O orçamento proposto deve respeitar os Limites da IA (até R$ 100 por dia e dentro do orçamento do mês).
+- [ ] **Aprovar (simulado)** → a campanha passa para "Ligar campanha". **Aprovar ativação (simulado)** → some da fila e fica em Campanhas como ativa · SIMULADA.
+- [ ] Peça outra e clique em **Recusar**: ela some da fila e a JUDITE não propõe esse produto de novo por 14 dias.
+- [ ] No dia seguinte, confira se apareceu uma proposta sozinha (o cron das 06h30 de Brasília monta uma por dia, enquanto houver menos de 2 esperando você).
+- [ ] "O que a JUDITE fez sozinha" lista as propostas e, com a autonomia ligada, as pausas e ajustes de verba.
+
+### 13. Se tudo estiver certo
 - [ ] Me avise no chat para revisarmos juntos e fazer o merge da `desenvolvimento` na `main` (isso eu não fiz).
 - [ ] Depois do merge, teste `https://www.guialencois.org/?judite_teste=1`: deve aparecer a faixa verde no canto do site.

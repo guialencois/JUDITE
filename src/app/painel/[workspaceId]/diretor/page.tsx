@@ -277,7 +277,7 @@ export default async function DiretorPage(props: PageProps<"/painel/[workspaceId
           <p className="text-xs text-zinc-500">
             Sempre depois de {DIAS_MINIMOS} dias de dados e {CLIQUES_MINIMOS} cliques, e nunca na mesma campanha duas vezes em {DIAS_DE_ESPERA} dias.
             Qualquer coisa acima dos Limites da IA (teto por dia, % por ajuste, orçamento do mês) não é aplicada: fica aguardando a sua aprovação.
-            Ela nunca cria campanha, nunca ativa campanha e nunca publica nada sozinha.
+            Ela propõe campanhas novas (veja em Diretor de Tráfego), mas nunca cria, nunca ativa e nunca publica nada sozinha.
           </p>
         </div>
 
