@@ -77,7 +77,7 @@ describe("datas do mês", () => {
   });
 
   it("usa padrões seguros quando o limite não está gravado", () => {
-    expect(lerLimites([])).toEqual({ maxSemAprovacao: 100, aumentoMaxPercent: 10, mensalMax: 2000, custosPercent: 25 });
+    expect(lerLimites([])).toMatchObject({ maxSemAprovacao: 100, aumentoMaxPercent: 10, mensalMax: 2000, custosPercent: 25 });
     expect(lerLimites([{ chave: "orcamento_mensal_max", valor: "3500.00" }]).mensalMax).toBe(3500);
   });
 });

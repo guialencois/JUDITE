@@ -14,9 +14,9 @@
 
 import { provedorDoWorkspace } from "@/lib/anuncios/provedor";
 import type { createAdminClient } from "@/lib/supabase/admin";
-import { validarAtivacao, validarOrcamento } from "./limites";
+import { estouroDoCanal, validarAtivacao, validarOrcamento } from "./limites";
 import { lerLimites, situacaoDoMes } from "./mes";
-import type { AcaoAnuncio, Plataforma } from "./tipos";
+import { NOME_PLATAFORMA, type AcaoAnuncio, type Plataforma } from "./tipos";
 
 type Admin = ReturnType<typeof createAdminClient>;
 
@@ -90,6 +90,20 @@ export async function executarAcao(db: Admin, p: PedidoAcao): Promise<ResultadoA
     return { tipo: "aguardando_aprovacao", motivo, valor };
   };
 
+  // Canal bloqueado na governança: a automação não age nele (pausar continua sempre permitido).
+  if (p.origem === "automacao" && p.acao !== "pausar" && limites.bloqueadas.includes(p.plataforma)) {
+    antes = null;
+    depois = p.acao === "ativar" ? provedor.statusAtiva : String(p.valorReais ?? "");
+    return aguardar(`${NOME_PLATAFORMA[p.plataforma]} está bloqueado para ações automáticas nos Limites da IA.`);
+  }
+  /** Teto do mês só deste canal (quando o workspace definiu um). Devolve o motivo quando estoura. */
+  const tetoDoCanal = async (novoPorDia: number): Promise<string | null> => {
+    const max = limites.mensalPorCanal[p.plataforma];
+    if (!(max > 0)) return null;
+    const canal = await situacaoDoMes(db, p.workspaceId, max, { plataforma: p.plataforma, campanhaId: p.entidadeId }, p.plataforma);
+    return estouroDoCanal(canal, novoPorDia, NOME_PLATAFORMA[p.plataforma]);
+  };
+
   if (p.acao === "pausar" || p.acao === "ativar") {
     acao = { tipo: p.acao, plataforma: p.plataforma, conta, entidade: "campanha", entidadeId: p.entidadeId };
     antes = (campanha.status as string | null) ?? null;
@@ -100,6 +114,8 @@ export async function executarAcao(db: Admin, p: PedidoAcao): Promise<ResultadoA
       const mes = await situacaoDoMes(db, p.workspaceId, limites.mensalMax, { plataforma: p.plataforma, campanhaId: p.entidadeId });
       const checagem = validarAtivacao(atual, mes);
       if (checagem.precisaAprovacao && !humanoConfirmou) return aguardar(checagem.motivo ?? "Passa do orçamento mensal.");
+      const canal = atual !== null && atual > 0 ? await tetoDoCanal(atual) : null;
+      if (canal && !humanoConfirmou) return aguardar(canal);
     }
   } else {
     const mes = await situacaoDoMes(db, p.workspaceId, limites.mensalMax, { plataforma: p.plataforma, campanhaId: p.entidadeId });
@@ -108,6 +124,7 @@ export async function executarAcao(db: Admin, p: PedidoAcao): Promise<ResultadoA
       novoReais: Number(p.valorReais),
       maxSemAprovacao: limites.maxSemAprovacao,
       aumentoMaxPercent: limites.aumentoMaxPercent,
+      reducaoMaxPercent: limites.reducaoMaxPercent,
       mes,
     });
     if (!checagem.ok) return { tipo: "recusada", http: 400, erro: checagem.motivo ?? "Valor inválido." };
@@ -119,6 +136,9 @@ export async function executarAcao(db: Admin, p: PedidoAcao): Promise<ResultadoA
     if (checagem.precisaAprovacao && !humanoConfirmou) {
       return aguardar(checagem.motivo ?? "Acima dos limites.", checagem.valorFinal);
     }
+    // Teto por canal: só para aumento (reduzir nunca é barrado por causa do mês).
+    const canal = atual !== null && checagem.valorFinal > atual ? await tetoDoCanal(checagem.valorFinal) : null;
+    if (canal && !humanoConfirmou) return aguardar(canal, checagem.valorFinal);
     acao = { tipo: "definir_orcamento", plataforma: p.plataforma, conta, campanhaId: p.entidadeId, valorReais: checagem.valorFinal };
   }
 

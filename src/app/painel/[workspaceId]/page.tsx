@@ -1,5 +1,5 @@
 import { podeAgir } from "@/lib/trafego/acesso";
-import { PADRAO_AUMENTO_PERCENT, PADRAO_MAX_SEM_APROVACAO, PADRAO_MENSAL_MAX } from "@/lib/trafego/limites";
+import { PADRAO_AUMENTO_PERCENT, PADRAO_MAX_SEM_APROVACAO, PADRAO_MENSAL_MAX, PADRAO_REDUCAO_PERCENT } from "@/lib/trafego/limites";
 import { NOME_PLATAFORMA, type Plataforma } from "@/lib/trafego/tipos";
 import { cancelarConvite, convidar, salvarLimites } from "./actions";
 import { carregarWorkspace } from "./carregar";
@@ -7,7 +7,7 @@ import { carregarWorkspace } from "./carregar";
 const ERROS: Record<string, string> = {
   convite: "Não foi possível criar o convite. Confira o e-mail (ele pode já ter sido convidado).",
   limites: "Não foi possível salvar os limites. Confira os valores.",
-  "limites-migracao": "Os outros limites foram salvos, mas o orçamento mensal ainda não existe no banco: aplique a migração da Etapa 5 no Supabase (veja docs/PENDENTE.md). Até lá vale o padrão de R$ 2.000.",
+  "limites-migracao": "Os primeiros limites foram salvos, mas algum dos limites mais novos (orçamento mensal, redução máxima, teto ou bloqueio por canal) ainda não existe no banco: aplique as migrações da Etapa 5 e da CMO autônoma no Supabase (veja docs/PENDENTE.md). Até lá valem os padrões.",
 };
 const AVISOS: Record<string, string> = {
   convite: "Convite criado. A pessoa já pode criar a conta com esse e-mail na tela de login.",
@@ -20,6 +20,15 @@ const ROTULOS_LIMITE: Record<string, { rotulo: string; ajuda: string }> = {
   aumento_max_por_vez_percent: { rotulo: "Aumento máximo por vez (%)", ajuda: "Aumentos maiores pedem confirmação." },
   orcamento_mensal_max: { rotulo: "Orçamento mensal máximo (R$)", ajuda: "Soma de todas as plataformas no mês. O que passar disso pede confirmação." },
   custos_percent: { rotulo: "Custos do negócio (% do faturamento)", ajuda: "Usado para calcular lucro e margem." },
+  reducao_max_por_vez_percent: { rotulo: "Redução máxima por vez (%)", ajuda: "Cortes de verba maiores pedem confirmação." },
+  mensal_max_google_ads: { rotulo: "Teto do mês no Google Ads (R$)", ajuda: "0 = sem teto próprio; vale só o orçamento mensal." },
+  mensal_max_facebook: { rotulo: "Teto do mês na Meta (R$)", ajuda: "0 = sem teto próprio; vale só o orçamento mensal." },
+  mensal_max_tiktok: { rotulo: "Teto do mês no TikTok (R$)", ajuda: "0 = sem teto próprio; vale só o orçamento mensal." },
+};
+
+/** Canais em que a JUDITE não propõe campanha nem age sozinha (pausar continua permitido). */
+const BLOQUEIOS: Record<string, string> = {
+  bloqueada_google_ads: "Google Ads", bloqueada_facebook: "Meta Ads", bloqueada_tiktok: "TikTok Ads",
 };
 
 /** Valor mostrado quando o limite ainda não está gravado no banco (é o mesmo padrão que os freios usam). */
@@ -27,6 +36,7 @@ const PADROES_LIMITE: Record<string, number> = {
   orcamento_max_sem_aprovacao: PADRAO_MAX_SEM_APROVACAO,
   aumento_max_por_vez_percent: PADRAO_AUMENTO_PERCENT,
   orcamento_mensal_max: PADRAO_MENSAL_MAX,
+  reducao_max_por_vez_percent: PADRAO_REDUCAO_PERCENT,
 };
 
 const campo = "w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100";
@@ -93,6 +103,16 @@ export default async function WorkspacePage(props: PageProps<"/painel/[workspace
                 className={campo}
               />
               <span className="block text-xs text-zinc-500">{info.ajuda}</span>
+            </label>
+          ))}
+          {Object.entries(BLOQUEIOS).map(([chave, nome]) => (
+            <label key={chave} className="space-y-1 text-sm">
+              <span className="block">JUDITE em {nome}</span>
+              <select name={chave} disabled={!gestor} defaultValue={Number(config?.find((c) => c.chave === chave)?.valor ?? 0) >= 1 ? "1" : "0"} className={campo}>
+                <option value="0">Liberada</option>
+                <option value="1">Bloqueada</option>
+              </select>
+              <span className="block text-xs text-zinc-500">Bloqueada: ela não propõe campanha nem age sozinha neste canal.</span>
             </label>
           ))}
           {gestor && <div className="sm:col-span-2 lg:col-span-4"><button className={botao}>Salvar limites</button></div>}

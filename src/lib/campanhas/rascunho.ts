@@ -7,7 +7,7 @@
  */
 
 import { z } from "zod";
-import { estouroMensal, TETO_ABSOLUTO_REAIS, type SituacaoDoMes } from "@/lib/trafego/limites";
+import { estouroDoCanal, estouroMensal, TETO_ABSOLUTO_REAIS, type SituacaoDoMes } from "@/lib/trafego/limites";
 
 export const OBJETIVOS = ["trafego", "mensagens", "conversoes", "reconhecimento"] as const;
 export type Objetivo = (typeof OBJETIVOS)[number];
@@ -39,25 +39,11 @@ export const rascunhoSchema = z.object({
 });
 export type Rascunho = z.infer<typeof rascunhoSchema>;
 
-/** O que a IA devolve quando o Diretor monta um rascunho (ids vêm como texto e são conferidos depois). */
-export const rascunhoIaSchema = z.object({
-  plataforma: z.enum(["google_ads", "facebook", "tiktok"]),
-  nome: z.string(),
-  objetivo: z.enum(OBJETIVOS),
-  orcamento_diario: z.number(),
-  publico: z.object({
-    regiao: z.string(),
-    idade_min: z.number().nullable(),
-    idade_max: z.number().nullable(),
-    interesses: z.string(),
-  }),
-  criativo_ids: z.array(z.string()),
-  justificativa: z.string(),
-});
-
 export type ContextoRascunho = {
   maxSemAprovacao: number;
   mes: SituacaoDoMes;
+  /** Situação do mês só do canal da campanha, quando o workspace definiu um teto por canal. */
+  canal?: SituacaoDoMes | null;
   /** Conexões prontas (nomes da tabela conexoes: google_ads, meta, tiktok). */
   plataformasConectadas: string[];
   criativosValidos: string[];
@@ -86,6 +72,8 @@ export function conferirRascunho(r: Rascunho, ctx: ContextoRascunho): { erro: st
   }
   const mensal = estouroMensal(ctx.mes, r.orcamento_diario);
   if (mensal) avisos.push(mensal + " Isso vale para quando a campanha for ativada.");
+  const doCanal = ctx.canal ? estouroDoCanal(ctx.canal, r.orcamento_diario, "este canal") : null;
+  if (doCanal) avisos.push(doCanal + " Isso vale para quando a campanha for ativada.");
   if (!r.criativo_ids.length) avisos.push("Nenhum criativo escolhido: os anúncios terão de ser escritos na plataforma.");
   return { erro: null, avisos };
 }

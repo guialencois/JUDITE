@@ -10,6 +10,7 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { registrarEvento } from "@/lib/cmo/estados-db";
 import { provedorDoWorkspace, type ProvedorAnuncios } from "@/lib/anuncios/provedor";
 import type { createAdminClient } from "@/lib/supabase/admin";
 import { executarAcao } from "@/lib/trafego/executar";
@@ -37,6 +38,8 @@ export async function publicarRascunho(db: Admin, workspaceId: string, rascunhoI
   const orcamento = Number(r.orcamento_diario);
   const agora = new Date().toISOString();
   const comecou = Date.now();
+  const evento = (para: "publicada_pausada" | "erro", motivo: string) =>
+    registrarEvento(db, { workspaceId, rascunhoId, de: "aguardando_aprovacao", para, ator: "pessoa", usuarioId, motivo });
   const historico = {
     workspace_id: workspaceId, usuario_id: usuarioId, origem: "painel", plataforma, tipo_entidade: "campanha",
     entidade_nome: r.nome as string, acao: "criar_campanha_pausada", valor_antes: null, valor_depois: String(orcamento),
@@ -47,7 +50,8 @@ export async function publicarRascunho(db: Admin, workspaceId: string, rascunhoI
     await db.from("campanha_rascunhos").update({
       status: "publicada_pausada", simulada: true, campanha_externa_id: idSimulado, decidido_por: usuarioId, decidido_em: agora,
       resultado: "Simulação: nada foi criado na plataforma.",
-    }).eq("id", rascunhoId).eq("workspace_id", workspaceId);
+    }).eq("id", rascunhoId).eq("workspace_id", workspaceId).eq("status", "aguardando_aprovacao");
+    await evento("publicada_pausada", "Aprovada pelo dono em modo simulado: nada foi criado na plataforma.");
     await db.from("trafego_acoes").insert({
       ...historico, entidade_id: idSimulado, status: "aplicada", resultado: "SIMULAÇÃO: campanha aprovada; nada foi criado na plataforma.",
       duracao_ms: Date.now() - comecou,
@@ -57,7 +61,8 @@ export async function publicarRascunho(db: Admin, workspaceId: string, rascunhoI
 
   const falhar = async (motivo: string): Promise<Resultado> => {
     await db.from("campanha_rascunhos").update({ status: "erro", decidido_por: usuarioId, decidido_em: agora, resultado: motivo.slice(0, 500) })
-      .eq("id", rascunhoId).eq("workspace_id", workspaceId);
+      .eq("id", rascunhoId).eq("workspace_id", workspaceId).eq("status", "aguardando_aprovacao");
+    await evento("erro", "Aprovada pelo dono, mas a criação falhou: " + motivo);
     await db.from("trafego_acoes").insert({
       ...historico, entidade_id: rascunhoId.slice(0, 36), status: "erro", resultado: motivo.slice(0, 500), duracao_ms: Date.now() - comecou,
     });
@@ -89,7 +94,8 @@ export async function publicarRascunho(db: Admin, workspaceId: string, rascunhoI
     await db.from("campanha_rascunhos").update({
       status: "publicada_pausada", simulada: false, campanha_externa_id: criada.campanhaId, decidido_por: usuarioId, decidido_em: agora,
       resultado: "Campanha criada PAUSADA na plataforma.",
-    }).eq("id", rascunhoId).eq("workspace_id", workspaceId);
+    }).eq("id", rascunhoId).eq("workspace_id", workspaceId).eq("status", "aguardando_aprovacao");
+    await evento("publicada_pausada", "Aprovada pelo dono e criada PAUSADA na plataforma.");
     await db.from("trafego_acoes").insert({
       ...historico, entidade_id: criada.campanhaId, status: "aplicada", resultado: "Campanha criada PAUSADA.", duracao_ms: Date.now() - comecou,
     });
@@ -105,9 +111,11 @@ export async function ativarRascunho(db: Admin, workspaceId: string, rascunhoId:
     .eq("id", rascunhoId).eq("workspace_id", workspaceId).eq("status", "publicada_pausada").maybeSingle();
   if (!r) return { ok: false, motivo: "Essa campanha não está aguardando ativação." };
   const agora = new Date().toISOString();
-  const marcarAtiva = (resultado: string) => db.from("campanha_rascunhos")
-    .update({ status: "ativa", ativado_por: usuarioId, ativado_em: agora, resultado })
-    .eq("id", rascunhoId).eq("workspace_id", workspaceId);
+  const marcarAtiva = async (resultado: string) => {
+    await db.from("campanha_rascunhos").update({ status: "ativa", ativado_por: usuarioId, ativado_em: agora, resultado })
+      .eq("id", rascunhoId).eq("workspace_id", workspaceId).eq("status", "publicada_pausada");
+    await registrarEvento(db, { workspaceId, rascunhoId, de: "publicada_pausada", para: "ativa", ator: "pessoa", usuarioId, motivo: resultado });
+  };
 
   if (r.simulada) {
     // Mesmo na simulação os freios são conferidos, para o teste mostrar o comportamento de verdade.

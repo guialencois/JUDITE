@@ -4,8 +4,8 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { PADRAO_AUMENTO_PERCENT, PADRAO_MAX_SEM_APROVACAO, PADRAO_MENSAL_MAX, type SituacaoDoMes } from "./limites";
-import { campanhaAtiva } from "./tipos";
+import { PADRAO_AUMENTO_PERCENT, PADRAO_MAX_SEM_APROVACAO, PADRAO_MENSAL_MAX, PADRAO_REDUCAO_PERCENT, type SituacaoDoMes } from "./limites";
+import { campanhaAtiva, PLATAFORMAS, type Plataforma } from "./tipos";
 
 const FUSO = "America/Sao_Paulo";
 
@@ -41,7 +41,18 @@ export function mesVizinho(mes: string, passo: number): string {
   return new Date(Date.UTC(ano, m - 1 + passo, 15)).toISOString().slice(0, 7);
 }
 
-export type LimitesDoWorkspace = { maxSemAprovacao: number; aumentoMaxPercent: number; mensalMax: number; custosPercent: number };
+export type LimitesDoWorkspace = {
+  maxSemAprovacao: number;
+  aumentoMaxPercent: number;
+  mensalMax: number;
+  custosPercent: number;
+  /** Maior redução de verba de uma vez sem aprovação. */
+  reducaoMaxPercent: number;
+  /** Teto de gasto no mês por canal (0 = sem teto próprio). */
+  mensalPorCanal: Record<Plataforma, number>;
+  /** Canais em que a JUDITE não propõe campanha nem age sozinha. */
+  bloqueadas: Plataforma[];
+};
 
 /** Lê os limites do workspace; o que não estiver gravado cai no padrão seguro. */
 export function lerLimites(cfg: { chave: string; valor: unknown }[] | null | undefined): LimitesDoWorkspace {
@@ -55,6 +66,9 @@ export function lerLimites(cfg: { chave: string; valor: unknown }[] | null | und
     aumentoMaxPercent: valor("aumento_max_por_vez_percent", PADRAO_AUMENTO_PERCENT),
     mensalMax: valor("orcamento_mensal_max", PADRAO_MENSAL_MAX),
     custosPercent: valor("custos_percent", 25),
+    reducaoMaxPercent: valor("reducao_max_por_vez_percent", PADRAO_REDUCAO_PERCENT),
+    mensalPorCanal: Object.fromEntries(PLATAFORMAS.map((p) => [p, Math.max(0, valor("mensal_max_" + p, 0))])) as Record<Plataforma, number>,
+    bloqueadas: PLATAFORMAS.filter((p) => valor("bloqueada_" + p, 0) >= 1),
   };
 }
 
@@ -67,12 +81,16 @@ export async function situacaoDoMes(
   workspaceId: string,
   mensalMax: number,
   ignorar?: { plataforma: string; campanhaId: string },
+  /** Quando informado, conta só o gasto e as campanhas deste canal (para o teto por canal). */
+  soPlataforma?: string,
 ): Promise<SituacaoDoMes> {
   const hoje = hojeEmBrasilia();
   const { inicio } = limitesDoMes(hoje.slice(0, 7));
+  const gastosQ = db.from("trafego_metricas_dia").select("gasto").eq("workspace_id", workspaceId).gte("data", inicio).lte("data", hoje);
+  const campanhasQ = db.from("trafego_campanhas").select("plataforma, campanha_id, status, orcamento_diario").eq("workspace_id", workspaceId);
   const [{ data: gastos }, { data: campanhas }] = await Promise.all([
-    db.from("trafego_metricas_dia").select("gasto").eq("workspace_id", workspaceId).gte("data", inicio).lte("data", hoje).limit(50000),
-    db.from("trafego_campanhas").select("plataforma, campanha_id, status, orcamento_diario").eq("workspace_id", workspaceId),
+    (soPlataforma ? gastosQ.eq("plataforma", soPlataforma) : gastosQ).limit(50000),
+    soPlataforma ? campanhasQ.eq("plataforma", soPlataforma) : campanhasQ,
   ]);
   const gastoNoMes = (gastos ?? []).reduce((s, l) => s + Number(l.gasto ?? 0), 0);
   const outrasCampanhasPorDia = (campanhas ?? [])

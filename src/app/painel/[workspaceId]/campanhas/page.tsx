@@ -6,6 +6,7 @@
 
 import { BotaoEnviar } from "@/components/BotaoEnviar";
 import { OBJETIVOS, publicacaoReal, ROTULO_OBJETIVO, type Objetivo, type Publico } from "@/lib/campanhas/rascunho";
+import { ROTULO_ESTADO } from "@/lib/cmo/estados";
 import { iaConfigurada, PROVEDORES_IA, provedorParaConfigurar } from "@/lib/ia";
 import { podeAgir } from "@/lib/trafego/acesso";
 import { brl } from "@/lib/trafego/metricas";
@@ -36,12 +37,10 @@ const AVISOS: Record<string, string> = {
   ativada: "Campanha ativada na plataforma.",
   "ativada-simulada": "Ativação simulada: nada mudou na plataforma.",
 };
-const ROTULO_STATUS: Record<string, string> = {
-  aguardando_aprovacao: "aguardando aprovação", publicada_pausada: "criada e pausada (aguardando ativação)",
-  ativa: "ativa", recusada: "recusada", erro: "erro",
-};
+const ROTULO_STATUS: Record<string, string> = { ...ROTULO_ESTADO, publicada_pausada: "criada e pausada (aguardando ativação)" };
 const COR_STATUS: Record<string, string> = {
-  aguardando_aprovacao: "text-amber-300", publicada_pausada: "text-sky-300", ativa: "text-emerald-300", recusada: "text-zinc-400", erro: "text-rose-300",
+  aguardando_aprovacao: "text-amber-300", publicada_pausada: "text-sky-300", ativa: "text-emerald-300", aprendizado: "text-emerald-300",
+  otimizando: "text-emerald-300", pausada_pela_ia: "text-amber-300", recusada: "text-zinc-400", concluida: "text-zinc-400", erro: "text-rose-300",
 };
 
 const campo = "w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100";
@@ -106,7 +105,7 @@ export default async function CampanhasPage(props: PageProps<"/painel/[workspace
           <div className={cartao + " space-y-3"}>
             <h2 className="font-serif text-lg">Pedir um rascunho ao Diretor</h2>
             <p className="text-xs text-zinc-500">
-              A IA usa os dados reais do workspace, o produto e os criativos salvos, e propõe plataforma, objetivo, público e um orçamento dentro dos limites.
+              A JUDITE analisa os dados reais do workspace e monta a campanha completa para o produto. As outras formas de criar (ideias, perguntas) estão no Diretor de Tráfego.
             </p>
             {!temChave && <p className="text-xs text-amber-200">Falta a chave da IA ({variavelIA}). Use o formulário ao lado para montar à mão.</p>}
             {!produtos.length && <p className="text-xs text-amber-200">Cadastre um produto no Creative Studio primeiro.</p>}

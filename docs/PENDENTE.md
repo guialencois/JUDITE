@@ -2,7 +2,7 @@
 
 > Atualizado em 04/10/2026, no fim do modo autônomo. As 10 etapas foram implementadas na branch
 > `desenvolvimento` (nada foi para a `main`). Tudo compila (`npm run lint` e `npm run build` passam)
-> e os 95 testes automáticos passam (`npx vitest run`).
+> e os 134 testes automáticos passam (`npx vitest run`).
 >
 > **O que NÃO foi feito por mim, de propósito:** nenhuma migração foi aplicada, nenhuma API de
 > plataforma foi chamada com credenciais, o `.env.local` não foi lido, e nada foi publicado em produção.
@@ -37,6 +37,7 @@ Peça ao Claude no chat para revisar cada arquivo antes, se quiser.
 | 6 | `20261004060000_etapa9_campaign_manager.sql` | Tabela `campanha_rascunhos`. **Precisa da nº 5 antes.** |
 | 7 | `20261004070000_etapa10_autonomia.sql` | Tabela `autonomia` (chave ligada/desligada por workspace; nasce desligada). |
 | 8 | `20261005010000_diretor_trafego_aprovacoes.sql` | Permite marcar uma ação da autonomia como `aprovada` ou `dispensada` na página **Diretor de Tráfego**. Só amplia uma lista de valores. Sem ela, a página funciona, mas os botões Aprovar/Dispensar dessas ações avisam que falta a migração. |
+| 9 | `20261005020000_cmo_autonoma.sql` | CMO autônoma: guarda o plano completo de cada campanha, os novos estados (aprendizado, otimização, pausada pela JUDITE, concluída...), o histórico de cada mudança (`campanha_eventos`), as ideias (`campanha_ideias`), o registro do ciclo diário (`cmo_execucoes`), o nível de autonomia e os limites por canal. **Precisa das nº 2, 5, 6 e 7 antes.** Só acrescenta; não apaga nada. |
 
 Observações:
 - Todas as tabelas novas têm `workspace_id` e RLS ligado: membros leem; escrita só pelo servidor ou por dono/admin.
@@ -53,6 +54,7 @@ e, para o seu computador, no arquivo `.env.local`. Depois de mudar na Vercel, fa
 |---|---|---|
 | `GEMINI_API_KEY` | **Recomendada.** Liga a IA do Diretor, do Creative Studio e do rascunho de campanha usando o Google Gemini (plano grátis do AI Studio). Sem chave nenhuma, as telas explicam o que falta e o resto funciona. | `aistudio.google.com/apikey` → entrar com a conta Google → **Criar chave de API**. Não pede cartão. O plano grátis tem limite de pedidos por minuto e por dia. |
 | `ANTHROPIC_API_KEY` | Alternativa paga (Claude, modelo Sonnet). Só é usada se não houver `GEMINI_API_KEY` ou se `IA_PROVEDOR=anthropic`. | `console.anthropic.com` → API Keys → Create Key. O uso é cobrado pela Anthropic conforme o consumo. |
+| `LUNIKO_WEBHOOK_URL` e `LUNIKO_WEBHOOK_SECRET` | **Opcionais. Deixe vazias por enquanto.** Ligam o aviso ao LUNIKO a cada mudança de estado de campanha (contrato em `docs/CONTRATO-LUNIKO.md`). | Só quando o LUNIKO tiver o endereço para receber. |
 | `IA_PROVEDOR` | **Opcional.** `gemini` ou `anthropic`, para forçar um provedor. Vazia: usa o Gemini se `GEMINI_API_KEY` existir, senão a Anthropic. | Você decide. |
 | `JUDITE_PUBLICACAO_REAL` | **Deixe vazia.** Vazia = modo simulado (aprovar campanha não cria nada nas plataformas). Só coloque `1` quando decidir criar campanhas de verdade (sempre pausadas). | Você decide. |
 
@@ -104,7 +106,13 @@ Nada ficou travado, mas estes pontos **não puderam ser testados de verdade** e 
    detalhe do schema, a tela mostra "O Gemini recusou o pedido: ..." — copie a mensagem para mim; (b) no plano grátis
    o Google pode usar os textos enviados para melhorar os produtos dele (vale ler os termos do AI Studio); (c) o cron
    diário faz um pedido por workspace, bem abaixo do limite grátis.
-10. `docs/VISAO.md` ainda lista as fases como não concluídas: deixei para você marcar depois de testar.
+10. **CMO autônoma: o que ainda depende de fora.** (a) A geração real pela IA não foi testada (sem chave no ambiente); o motor
+    inteiro está coberto por testes com a IA simulada. (b) **Google Ads não cria campanha pela JUDITE**: aprovar uma proposta de
+    Google Ads em modo real devolve "crie na plataforma seguindo o rascunho"; ler, pausar, ativar e mudar verba funcionam.
+    (c) Meta e TikTok criam só a "casca" pausada; público, palavras-chave e anúncios do plano são finalizados na plataforma.
+    (d) Os níveis 3 e 4 de autonomia aparecem na tela, mas não podem ser ligados. (e) "Mercado" hoje são os dados da própria
+    empresa (campanhas, site, vendas); tendências, sazonalidade e concorrência ainda não têm fonte de dados.
+11. `docs/VISAO.md` ainda lista as fases como não concluídas: deixei para você marcar depois de testar.
 
 ## Roteiro de testes para amanhã
 
@@ -173,16 +181,26 @@ migrações (passos 1 a 3), depois aplicar as 7 migrações e seguir.
 - [ ] Clique em **Parar tudo** → volta a "Desligada".
 - [ ] **Deixe desligada** por enquanto.
 
-### 12. Diretor de Tráfego (página nova, no menu)
-- [ ] A página abre com três quadros: Propostas de campanha, Autonomia sobre a verba e Criação de campanhas (deve dizer **Modo simulado**).
-- [ ] Sem produto cadastrado, aparece o aviso para cadastrar no Creative Studio. Cadastre um produto de verdade.
-- [ ] Clique em **Pedir uma campanha nova agora** (leva até 1 minuto). A proposta aparece em "Para você avaliar", com
-      plataforma, objetivo, orçamento por dia, público e o porquê. **Confira se ela não inventou preço nem número.**
-- [ ] O orçamento proposto deve respeitar os Limites da IA (até R$ 100 por dia e dentro do orçamento do mês).
-- [ ] **Aprovar (simulado)** → a campanha passa para "Ligar campanha". **Aprovar ativação (simulado)** → some da fila e fica em Campanhas como ativa · SIMULADA.
-- [ ] Peça outra e clique em **Recusar**: ela some da fila e a JUDITE não propõe esse produto de novo por 14 dias.
-- [ ] No dia seguinte, confira se apareceu uma proposta sozinha (o cron das 06h30 de Brasília monta uma por dia, enquanto houver menos de 2 esperando você).
-- [ ] "O que a JUDITE fez sozinha" lista as propostas e, com a autonomia ligada, as pausas e ajustes de verba.
+### 12. Diretor de Tráfego (central de campanhas da CMO)
+Aplique antes as migrações nº 8 e nº 9. Sem a nº 9 a página avisa em amarelo o que fica faltando.
+- [ ] No topo: **IA: Conectada: Google Gemini**, **Autonomia: Nível 1: Assistido**, **Modo simulado**.
+- [ ] Cadastre um produto de verdade no Creative Studio (nome, preço, duração, o que inclui).
+- [ ] **Criar automaticamente** → escolha o produto → aguarde até 1 minuto. A proposta aparece em "Para você avaliar".
+- [ ] Na proposta: leia "O que ela quer fazer" e "Por quê". Clique em **Ver detalhes**: oportunidade, estratégia, hipótese,
+      risco, confiança, dados utilizados, anúncios escritos e (no Google Ads) palavras-chave.
+      **Confira se nenhum anúncio traz preço ou número que você não cadastrou.**
+- [ ] **Editar** → mude o orçamento → Salvar. Abra **Histórico**: a edição aparece com data e valor.
+- [ ] **Quero ideias** → aparecem até 3 ideias com público, canal, hipótese, orçamento e métrica. Clique em **Gerar campanha** em uma e **Descartar** em outra.
+- [ ] **Criar campanha** (o terceiro quadro): preencha só o orçamento (ex.: 25) e a região. A proposta deve sair com R$ 25 por dia.
+- [ ] Tente pedir duas vezes seguidas: a segunda deve avisar para aguardar um minuto.
+- [ ] **Aprovar (simulado)** → vai para "Ligar campanha". **Aprovar ativação (simulado)** → aparece em "Campanhas da JUDITE em andamento".
+- [ ] Em andamento: **Pausar**, depois **Retomar**, depois **Concluir**. O Histórico mostra cada passo e quem fez.
+- [ ] **Recusar** uma proposta: ela some e a JUDITE não propõe a mesma combinação de produto e canal por 14 dias.
+- [ ] "Nível de autonomia": escolha o nível 0 e salve; volte para o 1. Os níveis 3 e 4 aparecem apagados. **Não ligue o nível 2 ainda.**
+- [ ] "Como a JUDITE trabalhou": cada pedido mostra as etapas (coleta, análise, decisão, geração, conferência, fila) com ✓ ou ✗.
+- [ ] No dia seguinte: deve existir um "ciclo automático" das 06h30 com, no máximo, uma proposta nova.
+- [ ] **Visão geral → Limites da IA**: há campos novos (redução máxima, teto por canal, bloquear canal). Bloqueie o TikTok, salve,
+      e confira que as ideias e propostas não usam mais o TikTok. Depois libere de novo.
 
 ### 13. Se tudo estiver certo
 - [ ] Me avise no chat para revisarmos juntos e fazer o merge da `desenvolvimento` na `main` (isso eu não fiz).

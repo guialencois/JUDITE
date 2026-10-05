@@ -3,11 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { gravarRascunho, montarRascunhoDoProduto } from "@/lib/campanhas/gravar";
+import { gravarRascunho } from "@/lib/campanhas/gravar";
 import { ativarRascunho, publicarRascunho } from "@/lib/campanhas/publicar";
-import { rascunhoSchema, type Rascunho } from "@/lib/campanhas/rascunho";
+import { rascunhoSchema } from "@/lib/campanhas/rascunho";
+import { mudarEstado } from "@/lib/cmo/estados";
+import { repositorioDeEstados } from "@/lib/cmo/estados-db";
+import { criarCampanha } from "@/lib/cmo/servico";
 import { exigirDono } from "@/lib/conexoes/acesso";
-import { ErroIA, iaConfigurada } from "@/lib/ia";
+import { iaConfigurada } from "@/lib/ia";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { papelNoWorkspace, podeAgir } from "@/lib/trafego/acesso";
 
@@ -44,12 +47,12 @@ export async function criarRascunho(formData: FormData) {
   });
   if (!parsed.success || !idades.success) redirect(pagina(ws, "erro=rascunho"));
 
-  const erro = await gravarRascunho(createAdminClient(), ws, acesso.userId, "painel", parsed.data);
+  const salvo = await gravarRascunho(createAdminClient(), ws, acesso.userId, "painel", parsed.data);
   revalidatePath(`/painel/${ws}/campanhas`);
-  redirect(pagina(ws, erro ? "erro=conferencia&motivo=" + encodeURIComponent(erro.slice(0, 200)) : "aviso=rascunho"));
+  redirect(pagina(ws, "erro" in salvo ? "erro=conferencia&motivo=" + encodeURIComponent(salvo.erro.slice(0, 200)) : "aviso=rascunho"));
 }
 
-/** Pede ao Diretor (IA) um rascunho para um produto cadastrado. */
+/** Pede à CMO uma campanha para um produto cadastrado (o mesmo motor da página Diretor de Tráfego). */
 export async function pedirRascunhoAoDiretor(formData: FormData) {
   const ws = String(formData.get("workspaceId"));
   const acesso = await exigirGestor(ws);
@@ -63,18 +66,12 @@ export async function pedirRascunhoAoDiretor(formData: FormData) {
     .order("criado_em", { ascending: false }).limit(1).maybeSingle();
   if (recente && Date.now() - new Date(recente.criado_em as string).getTime() < 60_000) redirect(pagina(ws, "erro=recente"));
 
-  let rascunho: Rascunho | null;
-  try {
-    rascunho = await montarRascunhoDoProduto(db, ws, parsed.data.produtoId, parsed.data.orientacao || null);
-  } catch (erro) {
-    const motivo = erro instanceof ErroIA ? erro.message : "A IA devolveu um rascunho fora das regras (valor ou formato inválido).";
-    redirect(pagina(ws, "erro=ia&motivo=" + encodeURIComponent(motivo.slice(0, 200))));
-  }
-  if (!rascunho) redirect(pagina(ws, "erro=produto"));
-
-  const erro = await gravarRascunho(db, ws, acesso.userId, "diretor", rascunho);
+  const r = await criarCampanha(db, {
+    workspaceId: ws, usuarioId: acesso.userId, modo: "automatico", produtoId: parsed.data.produtoId, observacao: parsed.data.orientacao || null,
+  });
   revalidatePath(`/painel/${ws}/campanhas`);
-  redirect(pagina(ws, erro ? "erro=conferencia&motivo=" + encodeURIComponent(erro.slice(0, 200)) : "aviso=rascunho-ia"));
+  revalidatePath(`/painel/${ws}/diretor-trafego`);
+  redirect(pagina(ws, r.ok ? "aviso=rascunho-ia" : "erro=ia&motivo=" + encodeURIComponent(r.motivo.slice(0, 200))));
 }
 
 const decisaoSchema = z.object({ workspaceId: z.uuid(), rascunhoId: z.uuid(), decisao: z.enum(["aprovar", "recusar", "ativar"]) });
@@ -96,10 +93,12 @@ export async function decidirRascunho(formData: FormData) {
   };
 
   if (decisao === "recusar") {
-    await db.from("campanha_rascunhos").update({ status: "recusada", decidido_por: dono.userId, decidido_em: new Date().toISOString() })
-      .eq("id", rascunhoId).eq("workspace_id", ws).eq("status", "aguardando_aprovacao");
+    const recusa = await mudarEstado(repositorioDeEstados(db), {
+      workspaceId: ws, rascunhoId, de: "aguardando_aprovacao", para: "recusada", ator: "pessoa", usuarioId: dono.userId,
+      motivo: "Recusada pelo dono. Nada foi criado.", campos: { decidido_por: dono.userId, decidido_em: new Date().toISOString() },
+    });
     revalidar();
-    redirect(pagina(ws, "aviso=recusada", tela));
+    redirect(pagina(ws, recusa.ok ? "aviso=recusada" : "erro=plataforma&motivo=" + encodeURIComponent(recusa.motivo), tela));
   }
 
   const r = decisao === "aprovar" ? await publicarRascunho(db, ws, rascunhoId, dono.userId) : await ativarRascunho(db, ws, rascunhoId, dono.userId);

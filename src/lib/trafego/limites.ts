@@ -5,6 +5,9 @@
  *   orcamento_max_sem_aprovacao  teto diario por campanha que nao pede aprovacao
  *   aumento_max_por_vez_percent  maior aumento de uma vez
  *   orcamento_mensal_max         teto de gasto do workspace no mes (todas as plataformas)
+ *   reducao_max_por_vez_percent  maior reducao de uma vez sem aprovacao
+ *   mensal_max_<plataforma>      teto de gasto no mes por canal (0 = sem teto proprio)
+ *   bloqueada_<plataforma>       1 = a JUDITE nao propoe campanha nem age sozinha no canal
  *
  * Funcoes puras: nao falam com banco nem com API. Testes em limites.test.ts.
  */
@@ -23,6 +26,7 @@ export const TETO_ABSOLUTO_REAIS = 5000;
 export const PADRAO_MAX_SEM_APROVACAO = 100;
 export const PADRAO_AUMENTO_PERCENT = 10;
 export const PADRAO_MENSAL_MAX = 2000;
+export const PADRAO_REDUCAO_PERCENT = 50;
 
 /** Retrato do mes para o freio mensal. */
 export type SituacaoDoMes = {
@@ -41,6 +45,8 @@ export type EntradaOrcamento = {
   novoReais: number;
   maxSemAprovacao: number;
   aumentoMaxPercent?: number;
+  /** Quando informado, reducao maior que isso de uma vez tambem pede aprovacao. */
+  reducaoMaxPercent?: number;
   /** Quando informado, o freio mensal tambem e conferido. */
   mes?: SituacaoDoMes;
 };
@@ -90,6 +96,10 @@ export function validarOrcamento(e: EntradaOrcamento): Checagem {
     return { ok: true, precisaAprovacao: true, valorFinal: novo,
       motivo: "Aumento maior que " + limitePercent + "% de uma vez." };
   }
+  if (e.reducaoMaxPercent !== undefined && novo < e.atualReais * (1 - e.reducaoMaxPercent / 100) - 0.005) {
+    return { ok: true, precisaAprovacao: true, valorFinal: novo,
+      motivo: "Redução maior que " + e.reducaoMaxPercent + "% de uma vez." };
+  }
   // Freio mensal: so vale para aumento. Reduzir verba nunca e barrado por causa do mes.
   if (e.mes && novo > e.atualReais) {
     const motivo = estouroMensal(e.mes, novo);
@@ -112,4 +122,13 @@ export function validarAtivacao(orcamentoDiario: number | null, mes: SituacaoDoM
   }
   const motivo = estouroMensal(mes, orcamentoDiario);
   return motivo ? { precisaAprovacao: true, motivo } : { precisaAprovacao: false };
+}
+
+/** Mesmo calculo do freio mensal, mas so com o gasto e as campanhas de UM canal. null quando cabe ou nao ha teto. */
+export function estouroDoCanal(canal: SituacaoDoMes, novoPorDia: number, nomeDoCanal: string): string | null {
+  if (!(canal.mensalMax > 0)) return null;
+  const projecao = projecaoDoMes(canal, novoPorDia);
+  if (projecao <= canal.mensalMax) return null;
+  return "Com essa mudanca o gasto do mes em " + nomeDoCanal + " chegaria a cerca de " + reais(projecao) +
+    ", acima do teto do canal de " + reais(canal.mensalMax) + " (ja gasto: " + reais(canal.gastoNoMes) + ").";
 }

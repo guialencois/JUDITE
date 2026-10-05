@@ -335,3 +335,51 @@ campanhas, e ele avalia.
 (`trafego_acoes_status_check`) é o padrão do Postgres; não conferi no banco.
 
 **Como testar:** item 12 do roteiro em `docs/PENDENTE.md`.
+
+## CMO autônoma: motor de decisão, três modos de criação, estados e níveis de autonomia (05/10/2026)
+
+**Pedido do Jackson:** evoluir a JUDITE para uma Diretora de Marketing (AI CMO): encontrar a oportunidade, montar estratégia,
+campanha, anúncios, público e orçamento, pôr na fila de aprovação e, com autorização, executar. Sem fundir com o LUNIKO.
+
+**O que mudou**
+- **Motor da CMO em `src/lib/cmo/`**, com as etapas separadas e observáveis: coleta (`servico.ts`) → análise e decisão
+  (`oportunidades.ts`, regras fixas) → orçamento (`financeiro.ts`, regras fixas) → geração pela IA (`agentes.ts`, `gerar.ts`) →
+  conferência por código (`plano.ts`) → fila. A lógica recebe banco e IA por dependência, então é testada sem rede.
+- **Três modos na página Diretor de Tráfego:** "Criar automaticamente" (só o produto), "Quero ideias" (até 3 ideias explicadas,
+  cada uma com "Gerar campanha") e "Criar campanha" (perguntas mínimas, todas opcionais). A proposta diária continua.
+- **Plano explicável** gravado em `campanha_rascunhos.plano`: oportunidade e motivo, estratégia, funil, segmentação, hipótese,
+  métrica principal, impacto esperado, risco, confiança, dados utilizados, anúncios (AIDA/PAS), palavras-chave (Google Ads),
+  ideias de criativo, primeiro teste A/B, conta do orçamento e alternativas consideradas. A tela mostra em "Ver detalhes".
+- **Fila:** cada item diz o que ela quer fazer, por quê, impacto, orçamento, risco e confiança; ações Aprovar, Recusar,
+  Ver detalhes e Editar (nome, orçamento e público, passando pelos freios de novo).
+- **Máquina de estados** (`estados.ts`): rascunho → aguardando aprovação → criada e pausada → ativa → aprendizado → otimizando,
+  com pausada, pausada pela JUDITE, concluída, recusada e erro. Transição inválida é recusada; toda mudança vira linha em
+  `campanha_eventos`. Novas ações: pausar, retomar, concluir.
+- **Níveis de autonomia 0 a 4** (`niveis.ts`). 0 manual, 1 assistido (padrão), 2 controlada. 3 e 4 existem no desenho, mas a
+  aplicação não deixa ligar, nem gravando direto no banco. "Parar tudo" continua derrubando para o nível 1 na hora.
+- **Governança nova** em Limites da IA: redução máxima por vez, teto do mês por canal e bloqueio de canal. Valem para as
+  propostas, para o Gerenciador e para a autonomia (`executar.ts`).
+- **Ciclo diário** (`ciclo.ts`): confere o nível, abre o registro do dia (índice único = idempotente), monitora as campanhas
+  ligadas, gera no máximo uma proposta e grava cada etapa em `cmo_execucoes`.
+- **Ponte com o LUNIKO** (`src/lib/luniko/eventos.ts` + `docs/CONTRATO-LUNIKO.md`): webhook assinado a cada mudança de estado,
+  desligado por padrão. Nenhum código ou banco compartilhado.
+- Migração `20261005020000_cmo_autonoma.sql` (NÃO aplicada).
+- Removidos `src/lib/campanhas/propor.ts` e `src/lib/campanhas/diretor.ts`: o "Pedir rascunho" da página Campanhas usa o mesmo motor.
+
+**Decisões**
+- **A IA não decide dinheiro nem oportunidade.** Qual campanha propor e quanto gastar saem de regras fixas sobre dados reais;
+  a IA escreve o plano. O que a pessoa pediu e os limites sempre vencem a resposta da IA, e cada correção vira um aviso na tela.
+- **Um pedido de IA por campanha.** Os especialistas (tráfego, audiência, copy, criativo, analytics, CMO) têm instruções e campos
+  separados em `agentes.ts`, mas são consultados juntos para caber na cota grátis. Separar um agente é trocar o modo, não o desenho.
+- Confiança nunca passa da calculada pelos dados (histórico no canal, vendas do produto, cliques no WhatsApp).
+- Anúncio com número fora do cadastro do produto é descartado (mesma regra do Creative Studio); os aceitos viram rascunho lá.
+- Antes da migração nº 9 o fluxo antigo continua funcionando: a proposta é gravada sem o plano, com um aviso dizendo o que falta.
+- Campanha nova e ativação continuam exigindo aprovação do dono em todos os níveis.
+- A redução máxima por vez (padrão 50%) vale também para pessoas no Gerenciador: cortes maiores pedem confirmação.
+
+**Limitações reais**
+- Geração real pela IA não testada (sem chave no ambiente). Google Ads não cria campanha pela JUDITE; Meta e TikTok criam só
+  a casca pausada. Tendências, sazonalidade e concorrência não têm fonte de dados: a análise usa campanhas, site e vendas.
+- O caminho de volta LUNIKO → JUDITE e o reenvio de eventos que falharam não existem ainda.
+
+**Como testar:** item 12 do roteiro em `docs/PENDENTE.md`.
