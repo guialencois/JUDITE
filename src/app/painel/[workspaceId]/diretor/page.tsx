@@ -5,7 +5,7 @@
 
 import Link from "next/link";
 import { BotaoEnviar } from "@/components/BotaoEnviar";
-import { iaConfigurada } from "@/lib/diretor/claude";
+import { iaConfigurada, PROVEDORES_IA, provedorParaConfigurar } from "@/lib/ia";
 import { ROTULO_TIPO, type TipoRecomendacao } from "@/lib/diretor/tipos";
 import { podeAgir } from "@/lib/trafego/acesso";
 import { brl } from "@/lib/trafego/metricas";
@@ -72,6 +72,8 @@ export default async function DiretorPage(props: PageProps<"/painel/[workspaceId
   const erro = typeof params.erro === "string" ? ERROS[params.erro] : undefined;
   const aviso = typeof params.aviso === "string" ? AVISOS[params.aviso] : undefined;
   const temChave = iaConfigurada();
+  const provedor = provedorParaConfigurar();
+  const ia = PROVEDORES_IA[provedor];
 
   const { data: relatorios, error: erroTabela } = await supabase
     .from("diretor_relatorios")
@@ -116,14 +118,18 @@ export default async function DiretorPage(props: PageProps<"/painel/[workspaceId
 
       {!temChave && (
         <div className="space-y-2 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100">
-          <p className="font-medium">Falta a chave da IA para o Diretor funcionar.</p>
+          <p className="font-medium">Falta a chave da IA ({ia.nome}) para o Diretor funcionar.</p>
           <ol className="list-decimal space-y-1 pl-5">
-            <li>Abra <code className={codigo}>console.anthropic.com</code> → <strong>API Keys</strong> → <strong>Create Key</strong> e copie a chave.</li>
-            <li>No site da Vercel: projeto JUDITE → <strong>Settings → Environment Variables</strong> → crie <code className={codigo}>ANTHROPIC_API_KEY</code> com a chave e marque Production e Preview.</li>
+            {provedor === "gemini" ? (
+              <li>Abra <code className={codigo}>{ia.ondeCriar}</code>, entre com a sua conta Google, clique em <strong>Criar chave de API</strong> e copie a chave. O plano grátis não pede cartão.</li>
+            ) : (
+              <li>Abra <code className={codigo}>{ia.ondeCriar}</code> → <strong>API Keys</strong> → <strong>Create Key</strong> e copie a chave.</li>
+            )}
+            <li>No site da Vercel: projeto JUDITE → <strong>Settings → Environment Variables</strong> → crie <code className={codigo}>{ia.variavel}</code> com a chave e marque Production e Preview.</li>
             <li>Para testar no seu computador, coloque a mesma linha no arquivo <code className={codigo}>.env.local</code>.</li>
             <li>Na Vercel, faça um novo deploy (Deployments → Redeploy) para a chave valer.</li>
           </ol>
-          <p className="text-xs text-amber-200/80">A chave fica só no servidor; nunca aparece no navegador. O uso da IA é cobrado pela Anthropic conforme o consumo.</p>
+          <p className="text-xs text-amber-200/80">A chave fica só no servidor; nunca aparece no navegador. {ia.custo}</p>
         </div>
       )}
 

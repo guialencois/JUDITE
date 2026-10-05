@@ -4,7 +4,7 @@
  */
 
 import { BotaoEnviar } from "@/components/BotaoEnviar";
-import { iaConfigurada } from "@/lib/diretor/claude";
+import { iaConfigurada, PROVEDORES_IA, provedorParaConfigurar } from "@/lib/ia";
 import { podeAgir } from "@/lib/trafego/acesso";
 import { brl } from "@/lib/trafego/metricas";
 import { hojeEmBrasilia } from "@/lib/trafego/mes";
@@ -21,7 +21,7 @@ const ERROS: Record<string, string> = {
   papel: "Só o dono ou um admin do workspace pode usar o Creative Studio.",
   produto: "Confira os dados do produto (o nome é obrigatório; preço só com números).",
   salvar: "Não foi possível salvar. Talvez já exista um produto com esse nome.",
-  "sem-chave": "Falta a chave da IA (ANTHROPIC_API_KEY). Veja a explicação na página Diretor.",
+  "sem-chave": "Falta a chave da IA ({variavel}). Veja a explicação na página Diretor.",
   "geracao-dados": "Escolha um produto para gerar as variações.",
   recente: "Acabou de sair uma geração. Aguarde alguns segundos antes de pedir outra.",
   ia: "A IA não conseguiu gerar as variações.",
@@ -57,7 +57,8 @@ export default async function CriativosPage(props: PageProps<"/painel/[workspace
   const gestor = podeAgir(papel);
   const params = await props.searchParams;
   const motivo = typeof params.motivo === "string" ? params.motivo.slice(0, 200) : "";
-  const erro = typeof params.erro === "string" ? ERROS[params.erro] : undefined;
+  const variavelIA = PROVEDORES_IA[provedorParaConfigurar()].variavel;
+  const erro = typeof params.erro === "string" ? ERROS[params.erro]?.replace("{variavel}", variavelIA) : undefined;
   const aviso = typeof params.aviso === "string"
     ? params.aviso === "geradas"
       ? `${Number(params.salvas) || 0} variação(ões) salva(s) como rascunho.` +
@@ -164,7 +165,7 @@ export default async function CriativosPage(props: PageProps<"/painel/[workspace
               <h2 className="font-serif text-xl">Pedir variações de anúncio</h2>
               {!temChave && (
                 <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
-                  Falta a chave da IA (<code className="font-mono text-xs">ANTHROPIC_API_KEY</code>). O passo a passo está na página Diretor.
+                  Falta a chave da IA (<code className="font-mono text-xs">{variavelIA}</code>). O passo a passo está na página Diretor.
                 </p>
               )}
               <form action={gerar} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

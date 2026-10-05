@@ -277,3 +277,31 @@ plataforma foi chamada com credenciais.
    das restrições que as migrações alteram.
 
 O que falta fazer (migrações, variáveis, liberações e o roteiro de testes) está em `docs/PENDENTE.md`.
+
+## IA pelo Google Gemini (04/10/2026)
+
+**O que mudou**
+- Novo módulo `src/lib/ia/` (substitui `src/lib/diretor/claude.ts`): `index.ts` exporta `pedirJson`, `iaConfigurada`,
+  `ErroIA` e `RespostaIA` com a mesma assinatura de antes. Todos os usos (Diretor, Creative Studio, Campaign Manager,
+  cron e páginas) passaram a importar de `@/lib/ia`.
+- `provedor.ts`: a variável `IA_PROVEDOR` (`gemini` ou `anthropic`) escolhe o provedor. Vazia ou com valor
+  desconhecido: Gemini se `GEMINI_API_KEY` existir, senão Anthropic.
+- `gemini.ts`: API REST oficial (`POST .../v1beta/models/gemini-3.8-flash:generateContent`) com `fetch`, sem SDK novo.
+  A chave vai no cabeçalho `x-goog-api-key`. A saída é pedida com `responseMimeType: application/json` +
+  `responseJsonSchema` (JSON Schema gerado por `z.toJSONSchema`) e validada de novo com o zod.
+- `anthropic.ts`: o código que já existia, agora com o modelo `claude-sonnet-5-5` (mais barato que o Opus).
+- Telas: as mensagens "Falta a chave da IA" citam a variável do provedor escolhido; o passo a passo da página
+  Diretor mostra o caminho do Gemini (ou o da Anthropic, se `IA_PROVEDOR=anthropic`).
+
+**Decisões**
+- Documentação consultada em ai.google.dev (modelos, preços, structured output, referência do `generateContent`):
+  `gemini-3.8-flash` é o Flash estável mais recente e tem cota grátis.
+- Sem chave nenhuma e sem `IA_PROVEDOR`, a regra pedida escolhe "anthropic", mas as telas orientam a criar a
+  `GEMINI_API_KEY`, que é o caminho grátis.
+- Qualquer `finishReason` diferente de `STOP`/`MAX_TOKENS` é tratado como bloqueio de segurança.
+- A mensagem de erro 400 do Google é mostrada cortada em 200 caracteres e com a chave mascarada, por garantia.
+
+**Limitação:** a chamada real ao Gemini não foi testada (sem chave no ambiente). Os testes usam `fetch` simulado.
+
+**Como testar:** cadastrar `GEMINI_API_KEY` na Vercel → Redeploy → Diretor → "Gerar relatório agora"; depois
+Creative Studio → "Gerar variações" e Campanhas → "Pedir rascunho".

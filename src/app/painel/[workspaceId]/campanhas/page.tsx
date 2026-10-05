@@ -6,7 +6,7 @@
 
 import { BotaoEnviar } from "@/components/BotaoEnviar";
 import { OBJETIVOS, publicacaoReal, ROTULO_OBJETIVO, type Objetivo, type Publico } from "@/lib/campanhas/rascunho";
-import { iaConfigurada } from "@/lib/diretor/claude";
+import { iaConfigurada, PROVEDORES_IA, provedorParaConfigurar } from "@/lib/ia";
 import { podeAgir } from "@/lib/trafego/acesso";
 import { brl } from "@/lib/trafego/metricas";
 import { NOME_PLATAFORMA, PLATAFORMAS, type Plataforma } from "@/lib/trafego/tipos";
@@ -21,7 +21,7 @@ const ERROS: Record<string, string> = {
   "so-dono": "Só o dono do workspace pode aprovar, recusar ou ativar campanhas.",
   rascunho: "Confira os dados do rascunho: nome (mínimo 3 letras), orçamento maior que zero e idades entre 18 e 65.",
   conferencia: "O rascunho não passou na conferência:",
-  "sem-chave": "Falta a chave da IA (ANTHROPIC_API_KEY). Veja a explicação na página Diretor. Você ainda pode montar o rascunho à mão.",
+  "sem-chave": "Falta a chave da IA ({variavel}). Veja a explicação na página Diretor. Você ainda pode montar o rascunho à mão.",
   produto: "Escolha um produto cadastrado no Creative Studio.",
   recente: "O Diretor acabou de montar um rascunho. Aguarde um minuto para pedir outro.",
   ia: "O Diretor não conseguiu montar o rascunho.",
@@ -57,7 +57,8 @@ export default async function CampanhasPage(props: PageProps<"/painel/[workspace
   const dono = papel === "owner";
   const params = await props.searchParams;
   const motivo = typeof params.motivo === "string" ? params.motivo.slice(0, 200) : "";
-  const erro = typeof params.erro === "string" ? ERROS[params.erro] : undefined;
+  const variavelIA = PROVEDORES_IA[provedorParaConfigurar()].variavel;
+  const erro = typeof params.erro === "string" ? ERROS[params.erro]?.replace("{variavel}", variavelIA) : undefined;
   const aviso = typeof params.aviso === "string" ? AVISOS[params.aviso] : undefined;
   const real = publicacaoReal();
   const temChave = iaConfigurada();
@@ -107,7 +108,7 @@ export default async function CampanhasPage(props: PageProps<"/painel/[workspace
             <p className="text-xs text-zinc-500">
               A IA usa os dados reais do workspace, o produto e os criativos salvos, e propõe plataforma, objetivo, público e um orçamento dentro dos limites.
             </p>
-            {!temChave && <p className="text-xs text-amber-200">Falta a chave da IA (ANTHROPIC_API_KEY). Use o formulário ao lado para montar à mão.</p>}
+            {!temChave && <p className="text-xs text-amber-200">Falta a chave da IA ({variavelIA}). Use o formulário ao lado para montar à mão.</p>}
             {!produtos.length && <p className="text-xs text-amber-200">Cadastre um produto no Creative Studio primeiro.</p>}
             <form action={pedirRascunhoAoDiretor} className="space-y-3">
               <input type="hidden" name="workspaceId" value={workspace.id} />

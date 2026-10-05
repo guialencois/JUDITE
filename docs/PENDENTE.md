@@ -2,7 +2,7 @@
 
 > Atualizado em 04/10/2026, no fim do modo autônomo. As 10 etapas foram implementadas na branch
 > `desenvolvimento` (nada foi para a `main`). Tudo compila (`npm run lint` e `npm run build` passam)
-> e os 70 testes automáticos passam (`npx vitest run`).
+> e os 87 testes automáticos passam (`npx vitest run`).
 >
 > **O que NÃO foi feito por mim, de propósito:** nenhuma migração foi aplicada, nenhuma API de
 > plataforma foi chamada com credenciais, o `.env.local` não foi lido, e nada foi publicado em produção.
@@ -50,7 +50,9 @@ e, para o seu computador, no arquivo `.env.local`. Depois de mudar na Vercel, fa
 
 | Nome | Para que serve | Onde conseguir |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | Liga a IA do Diretor, do Creative Studio e do rascunho de campanha. Sem ela, as telas explicam o que falta e o resto funciona. | `console.anthropic.com` → API Keys → Create Key. O uso é cobrado pela Anthropic conforme o consumo. |
+| `GEMINI_API_KEY` | **Recomendada.** Liga a IA do Diretor, do Creative Studio e do rascunho de campanha usando o Google Gemini (plano grátis do AI Studio). Sem chave nenhuma, as telas explicam o que falta e o resto funciona. | `aistudio.google.com/apikey` → entrar com a conta Google → **Criar chave de API**. Não pede cartão. O plano grátis tem limite de pedidos por minuto e por dia. |
+| `ANTHROPIC_API_KEY` | Alternativa paga (Claude, modelo Sonnet). Só é usada se não houver `GEMINI_API_KEY` ou se `IA_PROVEDOR=anthropic`. | `console.anthropic.com` → API Keys → Create Key. O uso é cobrado pela Anthropic conforme o consumo. |
+| `IA_PROVEDOR` | **Opcional.** `gemini` ou `anthropic`, para forçar um provedor. Vazia: usa o Gemini se `GEMINI_API_KEY` existir, senão a Anthropic. | Você decide. |
 | `JUDITE_PUBLICACAO_REAL` | **Deixe vazia.** Vazia = modo simulado (aprovar campanha não cria nada nas plataformas). Só coloque `1` quando decidir criar campanhas de verdade (sempre pausadas). | Você decide. |
 
 - **Pode apagar:** `WINDSOR_API_KEY` (da Vercel e do `.env.local`). Não é mais lida por nada.
@@ -65,7 +67,8 @@ e, para o seu computador, no arquivo `.env.local`. Depois de mudar na Vercel, fa
 | **Google Cloud** | Ativar as APIs: Search Console, My Business Account Management, My Business Business Information, Business Profile Performance, Google My Business. Adicionar os escopos `business.manage` e `webmasters.readonly` na tela de permissão OAuth | `console.cloud.google.com` | O redirecionamento é o mesmo já cadastrado para o Google Ads. |
 | **Meta** | App em `developers.facebook.com` + usuário do sistema com `ads_read`, `ads_management`, `business_management` | Passo a passo em Conexões | Pronto (leitura, pausar/ativar, orçamento, criar campanha pausada). |
 | **TikTok** | App em `business-api.tiktok.com` (passa por revisão) com permissões de Ads Management e Reporting; cadastrar o endereço de retorno mostrado em Conexões | Passo a passo em Conexões | Pronto. |
-| **Anthropic** | Conta com crédito e uma API key | `console.anthropic.com` | Pronto. |
+| **Google AI Studio (Gemini)** | Uma chave de API do plano grátis | `aistudio.google.com/apikey` | Pronto. É o provedor padrão da IA. |
+| **Anthropic** (opcional) | Conta com crédito e uma API key, só se quiser usar o Claude no lugar do Gemini | `console.anthropic.com` | Pronto. |
 | **Vercel** | Conferir se o plano aceita **dois** crons diários (`/api/trafego/sync` às 09h00 UTC e `/api/diretor/cron` às 09h30 UTC) | Vercel → Settings → Cron Jobs | Se o deploy reclamar do segundo cron, me avise: a saída é chamar o Diretor de dentro do cron de sincronização. |
 
 ## Bloqueios e dúvidas
@@ -94,7 +97,13 @@ Nada ficou travado, mas estes pontos **não puderam ser testados de verdade** e 
    (ou seja, depois do merge na `main`), porque o site carrega o `j.js` de lá.
 8. **Dúvida de produto:** a página Comercial aceita o nome do produto digitado à mão, e o Creative Studio tem um
    cadastro de produtos separado. Vale ligar os dois (escolher o produto de uma lista ao registrar a venda)?
-9. `docs/VISAO.md` ainda lista as fases como não concluídas: deixei para você marcar depois de testar.
+9. **IA pelo Gemini: a chamada real não foi testada** (não há chave no ambiente). O pedido segue a documentação
+   oficial conferida em 04/10/2026 (`generateContent`, modelo `gemini-3.8-flash`, saída em JSON com schema) e está
+   coberto por testes com respostas simuladas. Pontos a observar no primeiro uso real: (a) se o Google recusar algum
+   detalhe do schema, a tela mostra "O Gemini recusou o pedido: ..." — copie a mensagem para mim; (b) no plano grátis
+   o Google pode usar os textos enviados para melhorar os produtos dele (vale ler os termos do AI Studio); (c) o cron
+   diário faz um pedido por workspace, bem abaixo do limite grátis.
+10. `docs/VISAO.md` ainda lista as fases como não concluídas: deixei para você marcar depois de testar.
 
 ## Roteiro de testes para amanhã
 
@@ -137,8 +146,8 @@ migrações (passos 1 a 3), depois aplicar as 7 migrações e seguir.
 - [ ] Se já foi liberado: escreva uma resposta a uma avaliação → ela fica "aguardando aprovação" → **só publica** depois de "Aprovar e publicar".
 
 ### 8. Diretor
-- [ ] Sem `ANTHROPIC_API_KEY`: a página explica como criar a chave.
-- [ ] Cadastre a chave na Vercel, faça Redeploy e clique em **Gerar relatório agora** (leva até 1 minuto).
+- [ ] Sem chave nenhuma: a página explica como criar a `GEMINI_API_KEY` (grátis, em `aistudio.google.com/apikey`).
+- [ ] Cadastre a `GEMINI_API_KEY` na Vercel (Production e Preview), faça Redeploy e clique em **Gerar relatório agora** (leva até 1 minuto).
 - [ ] Leia o relatório: **os números citados batem com as telas?** Se a IA citar algo que não existe, me avise com a frase.
 - [ ] Com poucos dados, o esperado é ela recomendar coletar dados (conectar plataformas, registrar vendas), não mexer em verba.
 - [ ] Aprove uma recomendação que **não** seja de verba (ex.: site) e recuse outra.

@@ -7,7 +7,7 @@ import { montarRascunhoComIA } from "@/lib/campanhas/diretor";
 import { ativarRascunho, publicarRascunho } from "@/lib/campanhas/publicar";
 import { conferirRascunho, rascunhoSchema, type Rascunho } from "@/lib/campanhas/rascunho";
 import { exigirDono } from "@/lib/conexoes/acesso";
-import { ErroIA, iaConfigurada } from "@/lib/diretor/claude";
+import { ErroIA, iaConfigurada } from "@/lib/ia";
 import { carregarResumo } from "@/lib/diretor/resumo";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { papelNoWorkspace, podeAgir } from "@/lib/trafego/acesso";

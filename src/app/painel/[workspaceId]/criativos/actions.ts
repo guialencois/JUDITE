@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { gerarVariacoes } from "@/lib/criativos/gerar";
-import { ErroIA, iaConfigurada } from "@/lib/diretor/claude";
+import { ErroIA, iaConfigurada } from "@/lib/ia";
 import { createClient } from "@/lib/supabase/server";
 import { papelNoWorkspace, podeAgir } from "@/lib/trafego/acesso";
 

@@ -6,7 +6,7 @@
 
 import { lerPresenca, resumoDaPresenca } from "@/lib/presenca/painel";
 import type { createAdminClient } from "@/lib/supabase/admin";
-import { ErroIA, iaConfigurada, pedirJson } from "./claude";
+import { ErroIA, iaConfigurada, mensagemSemChave, pedirJson } from "@/lib/ia";
 import { aplicarRegras } from "./regras";
 import { carregarResumo } from "./resumo";
 import { respostaDiretorSchema, type ResumoDiretor } from "./tipos";
@@ -65,7 +65,7 @@ async function acrescentarExtras(db: Admin, workspaceId: string, resumo: ResumoD
 }
 
 export async function gerarRelatorio(db: Admin, workspaceId: string, origem: "cron" | "manual", usuarioId: string | null): Promise<ResultadoGeracao> {
-  if (!iaConfigurada()) return { ok: false, motivo: "Falta a variável ANTHROPIC_API_KEY no servidor." };
+  if (!iaConfigurada()) return { ok: false, motivo: mensagemSemChave() };
 
   const resumo = await carregarResumo(db, workspaceId);
   await acrescentarExtras(db, workspaceId, resumo);

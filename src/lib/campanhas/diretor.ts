@@ -4,7 +4,7 @@
  * por conferirRascunho antes de ser gravado, e SEMPRE nasce aguardando aprovação.
  */
 
-import { pedirJson } from "@/lib/diretor/claude";
+import { pedirJson } from "@/lib/ia";
 import type { ResumoDiretor } from "@/lib/diretor/tipos";
 import { rascunhoIaSchema, rascunhoSchema, type Rascunho } from "./rascunho";
 

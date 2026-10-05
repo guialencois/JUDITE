@@ -1,41 +1,25 @@
 /**
- * Chamada à Claude API (SDK oficial da Anthropic) para o Diretor. SOMENTE no servidor:
+ * Provedor Anthropic (Claude API, SDK oficial). SOMENTE no servidor:
  * a chave ANTHROPIC_API_KEY nunca vai para o navegador.
  *
  * A resposta vem em JSON no formato de um schema zod (saída estruturada) e é validada de novo
- * por quem chama. Sem a chave, iaConfigurada() devolve false e as telas explicam o que falta.
+ * por quem chama.
  */
 
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import type { z } from "zod";
+import { ErroIA, type PedidoIA, type RespostaIA } from "./tipos";
 
-export const MODELO_IA = "claude-opus-5-5";
+export const MODELO_ANTHROPIC = "claude-sonnet-5-5";
 
-export const iaConfigurada = (): boolean => Boolean(process.env.ANTHROPIC_API_KEY);
-
-export class ErroIA extends Error {
-  constructor(mensagem: string) {
-    super(mensagem);
-    this.name = "ErroIA";
-  }
-}
-
-export type RespostaIA<T> = { dados: T; modelo: string; tokensEntrada: number; tokensSaida: number };
-
-/** Pede à IA uma resposta no formato do schema. Lança ErroIA com mensagem em português quando falha. */
-export async function pedirJson<T extends z.ZodType>(opcoes: {
-  schema: T;
-  sistema: string;
-  usuario: string;
-  maxTokens?: number;
-}): Promise<RespostaIA<z.infer<T>>> {
-  if (!iaConfigurada()) throw new ErroIA("Falta a variável ANTHROPIC_API_KEY no servidor.");
+export async function pedirJsonAnthropic<T extends z.ZodType>(opcoes: PedidoIA<T>): Promise<RespostaIA<z.infer<T>>> {
+  if (!process.env.ANTHROPIC_API_KEY) throw new ErroIA("Falta a variável ANTHROPIC_API_KEY no servidor.");
   const cliente = new Anthropic();
 
   try {
     const resposta = await cliente.messages.parse({
-      model: MODELO_IA,
+      model: MODELO_ANTHROPIC,
       max_tokens: opcoes.maxTokens ?? 16000,
       output_config: { effort: "medium", format: zodOutputFormat(opcoes.schema) },
       system: opcoes.sistema,

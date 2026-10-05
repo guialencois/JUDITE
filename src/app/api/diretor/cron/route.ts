@@ -1,14 +1,14 @@
 /**
  * GET /api/diretor/cron — análise diária do Diretor (cron da Vercel, 1x por dia no plano Hobby).
  * Só aceita a chamada com o segredo do cron. Gera um relatório por workspace que tenha
- * alguma fonte de dados (conta de anúncios ou site). Sem ANTHROPIC_API_KEY, o relatório é pulado.
+ * alguma fonte de dados (conta de anúncios ou site). Sem a chave da IA, o relatório é pulado.
  * Depois, roda a autonomia supervisionada nos workspaces em que o dono a ligou (desligada por padrão);
  * as regras da autonomia não usam IA e passam sempre pelos freios de orçamento.
  */
 
 import { NextResponse } from "next/server";
 import { rodarAutonomia } from "@/lib/diretor/autonomia";
-import { iaConfigurada } from "@/lib/diretor/claude";
+import { iaConfigurada, mensagemSemChave } from "@/lib/ia";
 import { gerarRelatorio } from "@/lib/diretor/gerar";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { ehChamadaDoCron } from "@/lib/trafego/segredo";
@@ -32,7 +32,7 @@ export async function GET(req: Request) {
 
   const resultados = [];
   for (const id of workspaces) {
-    const relatorio = temIA ? await gerarRelatorio(db, id, "cron", null) : { ok: false, motivo: "ANTHROPIC_API_KEY não configurada." };
+    const relatorio = temIA ? await gerarRelatorio(db, id, "cron", null) : { ok: false, motivo: mensagemSemChave() };
     // Um erro na autonomia de um workspace não pode parar os outros.
     const autonomia = await rodarAutonomia(db, id).catch((e) => ({ erro: e instanceof Error ? e.message : "erro" }));
     resultados.push({ workspaceId: id, relatorio, autonomia });

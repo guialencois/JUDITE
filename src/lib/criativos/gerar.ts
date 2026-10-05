@@ -1,11 +1,11 @@
 /**
- * Creative Studio: gera variações de texto de anúncio (título, descrição, CTA, AIDA/PAS) com a Claude API,
+ * Creative Studio: gera variações de texto de anúncio (título, descrição, CTA, AIDA/PAS) com a IA (src/lib/ia),
  * usando SOMENTE os fatos cadastrados no produto. Depois da IA, o código confere de novo:
  * variação que cita um número (preço, desconto, duração, nota) que não está no cadastro é descartada.
  */
 
 import { z } from "zod";
-import { pedirJson } from "@/lib/diretor/claude";
+import { pedirJson } from "@/lib/ia";
 
 export type ProdutoParaTexto = {
   nome: string;

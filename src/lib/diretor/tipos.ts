@@ -26,7 +26,7 @@ export const ROTULO_TIPO: Record<TipoRecomendacao, string> = {
   outro: "Outro",
 };
 
-/** O que a IA devolve. Mantido simples (texto, listas, números) para a saída estruturada da Claude API. */
+/** O que a IA devolve. Mantido simples (texto, listas, números) para a saída estruturada da IA. */
 export const respostaDiretorSchema = z.object({
   diagnostico: z.string(),
   pontos: z.array(z.object({
