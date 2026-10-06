@@ -21,7 +21,9 @@
    ```
    e abra `http://localhost:3000`.
 
-## Migrações escritas e NÃO aplicadas
+## Migrações
+
+> **Situação em 05/10/2026:** as 9 migrações da tabela abaixo estão aplicadas no banco JUDITE (as duas últimas pelo Claude Code, a pedido do Jackson; a nº 7 já estava aplicada). Não há migração pendente.
 
 Aplicar **nesta ordem**. Onde: site do **Supabase** → projeto JUDITE → **SQL Editor** → **New query** →
 copiar o conteúdo do arquivo (pasta `supabase/migrations`), colar e clicar em **Run**. Uma de cada vez.
