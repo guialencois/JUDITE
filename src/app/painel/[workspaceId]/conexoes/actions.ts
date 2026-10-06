@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { exigirDono } from "@/lib/conexoes/acesso";
+import { appMeta, mccPadraoGoogle } from "@/lib/conexoes/app";
+import { escolherEntre, revogarNaPlataforma } from "@/lib/conexoes/plataformas";
 import { comTracos, META_GRAPH_URL, META_VERSAO, soDigitos, TIKTOK_API_URL } from "@/lib/conexoes/config";
 import { gravarConexao, lerConexao } from "@/lib/conexoes/segredos";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -124,7 +126,11 @@ export async function salvarMeta(formData: FormData) {
     redirect(pagina(ws, "erro=conta-de-outro"));
   }
   const { error } = await gravarConexao(db, parsed.data.workspaceId, "meta", dono.userId, {
-    dados: { conta, nome: info.name, moeda: info.currency ?? null, validado_em: new Date().toISOString() },
+    // Token colado à mão (usuário do sistema): não vence e não usa o app da JUDITE.
+    dados: {
+      conta, nome: info.name, moeda: info.currency ?? null, validado_em: new Date().toISOString(),
+      modo: "usuario_sistema", app_origem: "workspace", expira_em: null, precisa_reconectar: false, motivo_reconexao: null, contas_disponiveis: [],
+    },
     segredos: { token: parsed.data.token },
   });
   if (error) redirect(pagina(ws, "erro=salvar"));
@@ -200,17 +206,72 @@ export async function salvarTikTok(formData: FormData) {
   redirect(pagina(ws, "aviso=tiktok-conectado"));
 }
 
+const escolhaSchema = z.object({
+  workspaceId: wsSchema,
+  provedor: z.enum(["google_ads", "meta"]),
+  conta: z.string().trim().min(3).max(40),
+});
+
+/**
+ * Escolhe a conta de anúncios entre as que a plataforma devolveu no login ("Conectar com Google / Facebook").
+ * Só o dono. A conta precisa estar na lista guardada: não dá para apontar para uma conta que o login não alcança.
+ */
+export async function escolherConta(formData: FormData) {
+  const parsed = escolhaSchema.safeParse({
+    workspaceId: formData.get("workspaceId"), provedor: formData.get("provedor"), conta: formData.get("conta") ?? "",
+  });
+  const ws = String(formData.get("workspaceId"));
+  if (!parsed.success) redirect(wsSchema.safeParse(ws).success ? pagina(ws, "erro=conta-escolha") : "/painel");
+  const { workspaceId, provedor } = parsed.data;
+  const dono = await exigirDono(workspaceId);
+  if (!dono) redirect(pagina(ws, "erro=so-dono"));
+
+  const db = createAdminClient();
+  const { dados } = await lerConexao(db, workspaceId, provedor);
+  const conta = escolherEntre(dados.contas_disponiveis, parsed.data.conta);
+  if (!conta) redirect(pagina(ws, "erro=conta-escolha"));
+
+  if (!(await registrarConta(db, workspaceId, provedor === "meta" ? "facebook" : "google_ads", conta.id, conta.nome))) {
+    redirect(pagina(ws, "erro=conta-de-outro"));
+  }
+  const mcc = mccPadraoGoogle();
+  const { error } = await gravarConexao(db, workspaceId, provedor, dono.userId, {
+    dados: provedor === "meta"
+      ? { conta: conta.id, nome: conta.nome, moeda: conta.moeda ?? null, validado_em: new Date().toISOString() }
+      // login_customer_id: a conta de administrador pela qual a conta é acessada; sem ela, a MCC padrão da plataforma.
+      : { cliente: conta.id, nome: conta.nome, moeda: conta.moeda ?? null, gerente: conta.gerente ?? (mcc ? comTracos(mcc) : null) },
+  });
+  if (error) redirect(pagina(ws, "erro=salvar"));
+  revalidatePath(`/painel/${ws}/conexoes`);
+  redirect(pagina(ws, provedor === "meta" ? "aviso=meta-conectada" : "aviso=google-conta"));
+}
+
+/** Desconectar: revoga o acesso na própria plataforma (quando dá) e apaga os tokens criptografados. Só o dono. */
 export async function desconectar(formData: FormData) {
   const parsed = z.object({ workspaceId: wsSchema, provedor: z.enum(["google_ads", "meta", "tiktok", "google_presenca"]) }).safeParse({
     workspaceId: formData.get("workspaceId"),
     provedor: formData.get("provedor"),
   });
   if (!parsed.success) redirect("/painel");
-  if (!(await exigirDono(parsed.data.workspaceId))) redirect(pagina(parsed.data.workspaceId, "erro=so-dono"));
+  const { workspaceId, provedor } = parsed.data;
+  if (!(await exigirDono(workspaceId))) redirect(pagina(workspaceId, "erro=so-dono"));
 
-  // Apaga a conexão inteira, inclusive o token criptografado.
-  await createAdminClient().from("conexoes").delete()
-    .eq("workspace_id", parsed.data.workspaceId).eq("provedor", parsed.data.provedor);
-  revalidatePath(`/painel/${parsed.data.workspaceId}/conexoes`);
-  redirect(pagina(parsed.data.workspaceId, "aviso=desconectado"));
+  const db = createAdminClient();
+  // Se o segredo não abrir (chave trocada), a conexão é apagada do mesmo jeito, só sem revogar na plataforma.
+  const conexao = await lerConexao(db, workspaceId, provedor).catch(() => null);
+  const outroGoogle = provedor === "google_ads" ? "google_presenca" : provedor === "google_presenca" ? "google_ads" : null;
+  const outra = outroGoogle ? await lerConexao(db, workspaceId, outroGoogle).catch(() => null) : null;
+  const revogacao = conexao
+    ? await revogarNaPlataforma({
+      provedor, segredos: conexao.segredos, dados: conexao.dados, segredoDoAppMeta: appMeta()?.segredo ?? null,
+      outraConexaoGoogleAtiva: Boolean(outra?.segredos.refresh_token),
+    })
+    : { revogado: false, detalhe: "Não foi possível abrir os tokens salvos para revogar na plataforma." };
+
+  // Apaga a conexão inteira, inclusive o token criptografado, mesmo que a revogação tenha falhado.
+  await db.from("conexoes").delete().eq("workspace_id", workspaceId).eq("provedor", provedor);
+  revalidatePath(`/painel/${workspaceId}/conexoes`);
+  redirect(pagina(workspaceId, revogacao.revogado
+    ? "aviso=desconectado-revogado"
+    : "aviso=desconectado&motivo=" + encodeURIComponent(revogacao.detalhe.slice(0, 200))));
 }

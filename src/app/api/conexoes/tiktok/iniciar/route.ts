@@ -4,11 +4,12 @@
  * O "state" aleatório fica num cookie protegido e é conferido na volta (proteção contra CSRF).
  */
 
-import { randomBytes } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { exigirDono } from "@/lib/conexoes/acesso";
+import { appTikTok } from "@/lib/conexoes/app";
 import { TIKTOK_AUTH_URL, tiktokRetorno, urlDoSite } from "@/lib/conexoes/config";
+import { novoPedidoOAuth, opcoesDoCookie } from "@/lib/conexoes/oauth";
 import { lerConexao } from "@/lib/conexoes/segredos";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -24,24 +25,20 @@ export async function GET(req: NextRequest) {
 
   if (!(await exigirDono(workspaceId))) return voltar("so-dono");
   const { segredos } = await lerConexao(createAdminClient(), workspaceId, "tiktok");
-  if (!segredos.app_id || !segredos.secret) return voltar("tiktok-app");
+  // Autorização nova usa o app da plataforma, quando existe; senão, o app que o workspace salvou.
+  const app = appTikTok(segredos);
+  if (!app) return voltar("tiktok-app");
 
-  const state = randomBytes(24).toString("base64url");
+  const { state } = novoPedidoOAuth();
   const site = await urlDoSite();
   const destino = new URL(TIKTOK_AUTH_URL);
   destino.search = new URLSearchParams({
-    app_id: segredos.app_id,
+    app_id: app.id,
     state,
     redirect_uri: tiktokRetorno(site),
   }).toString();
 
   const resposta = NextResponse.redirect(destino);
-  resposta.cookies.set("judite_tiktok_oauth", JSON.stringify({ state, workspaceId }), {
-    httpOnly: true,
-    secure: site.startsWith("https://"),
-    sameSite: "lax",
-    path: "/api/conexoes/tiktok",
-    maxAge: 600,
-  });
+  resposta.cookies.set("judite_tiktok_oauth", JSON.stringify({ state, workspaceId }), opcoesDoCookie(site, "/api/conexoes/tiktok"));
   return resposta;
 }

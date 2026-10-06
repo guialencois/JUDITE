@@ -21,7 +21,9 @@
 
 import { ErroProvedor, numero, pedirJson, texto } from "@/lib/anuncios/http";
 import { GOOGLE_TOKEN_URL } from "@/lib/conexoes/config";
-import { lerConexao } from "@/lib/conexoes/segredos";
+import { appGoogle } from "@/lib/conexoes/app";
+import { ehRevogacaoGoogle } from "@/lib/conexoes/plataformas";
+import { lerConexao, marcarReconexao } from "@/lib/conexoes/segredos";
 import type { createAdminClient } from "@/lib/supabase/admin";
 
 type Admin = ReturnType<typeof createAdminClient>;
@@ -75,23 +77,31 @@ export async function abrirPresenca(db: Admin, workspaceId: string): Promise<{ o
   } catch {
     return { ok: false, motivo: "Não foi possível abrir a conexão do Google. Refaça a conexão na página Conexões." };
   }
-  if (!app.segredos.client_id || !app.segredos.client_secret) {
-    return { ok: false, motivo: "Falta o app OAuth do Google (Parte B do Google Ads, em Conexões)." };
+  const oauth = appGoogle(app.segredos, presenca.dados.app_origem);
+  if (!oauth) {
+    return { ok: false, motivo: "O app do Google ainda não está configurado (veja a caixa \"Configuração do administrador\" em Conexões)." };
+  }
+  if (presenca.dados.precisa_reconectar) {
+    return { ok: false, motivo: "A autorização do Google venceu ou foi revogada. Clique em \"Reconectar\" na Presença no Google, em Conexões." };
   }
   if (!presenca.segredos.refresh_token) {
     return { ok: false, motivo: "Autorize a Presença no Google em Conexões." };
   }
+  let revogada = false;
   try {
     const json = (await pedirJson("O Google", GOOGLE_TOKEN_URL, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
         grant_type: "refresh_token",
-        client_id: app.segredos.client_id,
-        client_secret: app.segredos.client_secret,
+        client_id: oauth.clientId,
+        client_secret: oauth.clientSecret,
         refresh_token: presenca.segredos.refresh_token,
       }),
-    }, erroDoGoogleApis)) as { access_token?: string } | null;
+    }, (json) => {
+      revogada = ehRevogacaoGoogle(json);
+      return revogada ? "a autorização do Google venceu ou foi revogada. Clique em \"Reconectar\" em Conexões." : erroDoGoogleApis(json);
+    })) as { access_token?: string } | null;
     if (!json?.access_token) return { ok: false, motivo: "O Google não devolveu o token de acesso." };
     const d = presenca.dados;
     return {
@@ -104,6 +114,7 @@ export async function abrirPresenca(db: Admin, workspaceId: string): Promise<{ o
       },
     };
   } catch (erro) {
+    if (revogada) await marcarReconexao(db, workspaceId, "google_presenca", "O Google recusou a autorização (vencida ou revogada).").catch(() => undefined);
     return { ok: false, motivo: erro instanceof Error ? erro.message : "Falha ao falar com o Google." };
   }
 }

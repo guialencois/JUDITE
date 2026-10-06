@@ -30,6 +30,8 @@ export type CredenciaisGoogle = {
   refreshToken: string;
   /** Conta de administrador (MCC), quando a conta de anúncios é gerenciada por uma. */
   gerente?: string | null;
+  /** Chamado quando o Google diz que a autorização venceu ou foi revogada (invalid_grant). */
+  aoRevogar?: () => Promise<void>;
 };
 
 type Linha = Record<string, Record<string, unknown> | undefined>;
@@ -41,8 +43,8 @@ const MENSAGENS: Record<string, string> = {
   CUSTOMER_NOT_ENABLED: "A conta do Google Ads não está ativa (pode estar cancelada ou ainda em configuração).",
   USER_PERMISSION_DENIED:
     "O e-mail que autorizou não tem acesso a essa conta do Google Ads. Se a conta é gerenciada por uma conta de administrador, informe o ID dela em Conexões.",
-  OAUTH_TOKEN_REVOKED: "A autorização do Google foi revogada. Clique em \"Autorizar de novo\" em Conexões.",
-  OAUTH_TOKEN_EXPIRED: "A autorização do Google expirou. Clique em \"Autorizar de novo\" em Conexões.",
+  OAUTH_TOKEN_REVOKED: "A autorização do Google foi revogada. Clique em \"Reconectar\" em Conexões.",
+  OAUTH_TOKEN_EXPIRED: "A autorização do Google expirou. Clique em \"Reconectar\" em Conexões.",
 };
 
 /** Traduz o erro do Google Ads para uma frase clara. Exportada para os testes. */
@@ -112,6 +114,7 @@ export function provedorGoogle(cred: CredenciaisGoogle): ProvedorAnuncios {
   /** Troca o refresh token salvo por um access token (vale cerca de 1 hora). */
   async function tokenDeAcesso(): Promise<string> {
     if (acesso && acesso.expira > Date.now() + 60_000) return acesso.token;
+    let revogada = false;
     const json = (await pedirJson("O Google", GOOGLE_TOKEN_URL, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -124,9 +127,14 @@ export function provedorGoogle(cred: CredenciaisGoogle): ProvedorAnuncios {
     }, (j) => {
       const e = j as { error?: string; error_description?: string } | null;
       if (!e?.error) return null;
-      return e.error === "invalid_grant"
-        ? "a autorização do Google venceu ou foi revogada. Clique em \"Autorizar de novo\" em Conexões."
+      revogada = e.error === "invalid_grant";
+      return revogada
+        ? "a autorização do Google venceu ou foi revogada. Clique em \"Reconectar\" em Conexões."
         : e.error_description ?? e.error;
+    }).catch(async (erro: unknown) => {
+      // Token revogado: a conexão fica marcada como "precisa reconectar" para a tela avisar.
+      if (revogada) await cred.aoRevogar?.().catch(() => undefined);
+      throw erro;
     })) as { access_token?: string; expires_in?: number } | null;
     if (!json?.access_token) throw new ErroProvedor("O Google não devolveu o token de acesso.");
     acesso = { token: json.access_token, expira: Date.now() + (json.expires_in ?? 3600) * 1000 };

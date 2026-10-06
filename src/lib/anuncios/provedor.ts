@@ -9,7 +9,8 @@
  * Roda SOMENTE no servidor.
  */
 
-import { lerConexao } from "@/lib/conexoes/segredos";
+import { appGoogle, appMeta, developerTokenGoogle, mccPadraoGoogle } from "@/lib/conexoes/app";
+import { lerConexao, marcarReconexao } from "@/lib/conexoes/segredos";
 import { CONEXAO_DA_PLATAFORMA } from "@/lib/conexoes/status";
 import type { createAdminClient } from "@/lib/supabase/admin";
 import { NOME_PLATAFORMA, type AcaoAnuncio, type LinhaCampanha, type LinhaMetrica, type Plataforma } from "@/lib/trafego/tipos";
@@ -67,26 +68,37 @@ export async function provedorDoWorkspace(db: Admin, workspaceId: string, plataf
 
   if (plataforma === "facebook") {
     if (!segredos.token || !dados.conta) return { ok: false, motivo: "Conecte a Meta em Conexões para ler e mudar as campanhas." };
-    return { ok: true, provedor: provedorMeta({ token: segredos.token, moeda: typeof dados.moeda === "string" ? dados.moeda : null }) };
+    if (dados.precisa_reconectar) return { ok: false, motivo: "A autorização da Meta venceu ou foi revogada. Clique em \"Reconectar\" em Conexões." };
+    // O appsecret_proof só vale para token emitido pelo app da JUDITE (login pelo botão "Conectar com Facebook").
+    const app = dados.app_origem === "plataforma" ? appMeta() : null;
+    return {
+      ok: true,
+      provedor: provedorMeta({
+        token: segredos.token, moeda: typeof dados.moeda === "string" ? dados.moeda : null, appSecret: app?.segredo ?? null,
+        aoRevogar: () => marcarReconexao(db, workspaceId, "meta", "A Meta recusou o token (vencido ou revogado)."),
+      }),
+    };
   }
 
   if (plataforma === "google_ads") {
-    if (!segredos.client_id || !segredos.client_secret) {
-      return { ok: false, motivo: "Conecte o Google Ads em Conexões: falta o app OAuth (Parte B)." };
+    const app = appGoogle(segredos, dados.app_origem);
+    const developerToken = developerTokenGoogle(segredos);
+    if (!app) return { ok: false, motivo: "O app do Google ainda não está configurado (veja a caixa \"Configuração do administrador\" em Conexões)." };
+    if (!segredos.refresh_token) return { ok: false, motivo: "Conecte o Google Ads em Conexões (botão \"Conectar com Google\")." };
+    if (dados.precisa_reconectar) return { ok: false, motivo: "A autorização do Google venceu ou foi revogada. Clique em \"Reconectar\" em Conexões." };
+    if (!developerToken) {
+      return { ok: false, motivo: "Falta o developer token do Google Ads (GOOGLE_ADS_DEVELOPER_TOKEN). Ele depende de aprovação do Google." };
     }
-    if (!segredos.refresh_token) return { ok: false, motivo: "Conecte o Google Ads em Conexões: falta autorizar a conta (Parte C)." };
-    if (!segredos.developer_token) {
-      return { ok: false, motivo: "Falta o developer token do Google Ads (Parte A em Conexões). Ele depende de aprovação do Google." };
-    }
-    if (!dados.cliente) return { ok: false, motivo: "Informe o ID do cliente do Google Ads em Conexões." };
+    if (!dados.cliente) return { ok: false, motivo: "Escolha a conta do Google Ads em Conexões." };
     return {
       ok: true,
       provedor: provedorGoogle({
-        developerToken: segredos.developer_token,
-        clientId: segredos.client_id,
-        clientSecret: segredos.client_secret,
+        developerToken,
+        clientId: app.clientId,
+        clientSecret: app.clientSecret,
         refreshToken: segredos.refresh_token,
-        gerente: typeof dados.gerente === "string" ? dados.gerente : null,
+        gerente: typeof dados.gerente === "string" && dados.gerente ? dados.gerente : mccPadraoGoogle(),
+        aoRevogar: () => marcarReconexao(db, workspaceId, "google_ads", "O Google recusou a autorização (vencida ou revogada)."),
       }),
     };
   }

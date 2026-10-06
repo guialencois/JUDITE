@@ -1,37 +1,21 @@
 /**
  * GET /api/conexoes/tiktok/callback
- * Volta do TikTok: confere o "state", troca o auth_code pelo access token
- * e guarda o token CRIPTOGRAFADO na conexão do workspace, com a lista de contas autorizadas.
+ * Volta do TikTok: confere o "state", troca o auth_code pelo access token, guarda o token
+ * CRIPTOGRAFADO e lista os anunciantes autorizados (com nome) para o dono escolher.
  */
 
 import { NextResponse, type NextRequest } from "next/server";
-import { z } from "zod";
 import { exigirDono } from "@/lib/conexoes/acesso";
-import { TIKTOK_API_URL } from "@/lib/conexoes/config";
+import { appTikTok } from "@/lib/conexoes/app";
+import { lerCookieOAuth, stateConfere } from "@/lib/conexoes/oauth";
+import { listarContasTikTok, trocarCodigoTikTok } from "@/lib/conexoes/plataformas";
 import { gravarConexao, lerConexao } from "@/lib/conexoes/segredos";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { segredoConfere } from "@/lib/trafego/segredo";
 
 export const runtime = "nodejs";
 
-const cookieSchema = z.object({ state: z.string().min(16), workspaceId: z.uuid() });
-const respostaSchema = z.object({
-  code: z.number(),
-  data: z.object({
-    access_token: z.string().min(10),
-    advertiser_ids: z.array(z.union([z.string(), z.number()]).transform(String)).default([]),
-  }).optional(),
-});
-
 export async function GET(req: NextRequest) {
-  const bruto = req.cookies.get("judite_tiktok_oauth")?.value;
-  let salvo: z.infer<typeof cookieSchema> | null = null;
-  try {
-    const p = cookieSchema.safeParse(JSON.parse(bruto ?? "null"));
-    salvo = p.success ? p.data : null;
-  } catch {
-    salvo = null;
-  }
+  const salvo = lerCookieOAuth(req.cookies.get("judite_tiktok_oauth")?.value);
   if (!salvo) return NextResponse.redirect(new URL("/painel", req.url));
   const { state, workspaceId } = salvo;
 
@@ -42,7 +26,7 @@ export async function GET(req: NextRequest) {
   };
 
   const params = req.nextUrl.searchParams;
-  if (!segredoConfere(params.get("state"), state)) return voltar("erro=tiktok-state");
+  if (!stateConfere(params.get("state"), state)) return voltar("erro=tiktok-state");
   const authCode = params.get("auth_code") ?? params.get("code");
   if (!authCode) return voltar("erro=tiktok-cancelado");
   const dono = await exigirDono(workspaceId);
@@ -50,20 +34,22 @@ export async function GET(req: NextRequest) {
 
   const db = createAdminClient();
   const { segredos } = await lerConexao(db, workspaceId, "tiktok");
-  if (!segredos.app_id || !segredos.secret) return voltar("erro=tiktok-app");
+  const app = appTikTok(segredos);
+  if (!app) return voltar("erro=tiktok-app");
 
-  const troca = await fetch(`${TIKTOK_API_URL}/oauth2/access_token/`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ app_id: segredos.app_id, secret: segredos.secret, auth_code: authCode }),
-    cache: "no-store",
-  }).catch(() => null);
-  const resposta = respostaSchema.safeParse(await troca?.json().catch(() => null));
-  if (!resposta.success || resposta.data.code !== 0 || !resposta.data.data) return voltar("erro=tiktok-token");
+  const troca = await trocarCodigoTikTok({ authCode, appId: app.id, secret: app.segredo });
+  if (!troca.ok) return voltar("erro=tiktok-token");
+
+  // Os nomes vêm de oauth2/advertiser/get; se essa lista falhar, ficam só os IDs devolvidos na troca do código.
+  const contas = await listarContasTikTok({ token: troca.valor.token, appId: app.id, secret: app.segredo });
+  const disponiveis = contas.ok && contas.valor.length ? contas.valor : troca.valor.anunciantes.map((id) => ({ id, nome: `Anunciante ${id}` }));
 
   const { error } = await gravarConexao(db, workspaceId, "tiktok", dono.userId, {
-    dados: { autorizado_em: new Date().toISOString(), anunciantes: resposta.data.data.advertiser_ids.slice(0, 50) },
-    segredos: { access_token: resposta.data.data.access_token },
+    dados: {
+      autorizado_em: new Date().toISOString(), app_origem: app.origem, precisa_reconectar: false, motivo_reconexao: null,
+      anunciantes: disponiveis.map((c) => c.id), contas_disponiveis: disponiveis,
+    },
+    segredos: { access_token: troca.valor.token },
   });
   if (error) return voltar("erro=salvar");
   return voltar("aviso=tiktok-autorizado");

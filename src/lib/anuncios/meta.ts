@@ -12,6 +12,7 @@
 
 import { META_GRAPH_URL, META_VERSAO } from "@/lib/conexoes/config";
 import type { AcaoAnuncio, LinhaCampanha, LinhaMetrica } from "@/lib/trafego/tipos";
+import { ehRevogacaoMeta, provaDoApp } from "@/lib/conexoes/plataformas";
 import { ErroProvedor, numero, pedirJson, texto } from "./http";
 import type { NovaCampanha, Periodo, ProvedorAnuncios } from "./provedor";
 
@@ -115,14 +116,43 @@ export function camposNovaCampanhaMeta(c: NovaCampanha): Record<string, string> 
   };
 }
 
-export function provedorMeta(cred: { token: string; moeda?: string | null }): ProvedorAnuncios {
+export type CredenciaisMeta = {
+  token: string;
+  moeda?: string | null;
+  /** Chave secreta do app que emitiu o token: com ela, toda chamada leva o appsecret_proof. */
+  appSecret?: string | null;
+  /** Chamado quando a Meta diz que o token venceu ou foi revogado (código 190). */
+  aoRevogar?: () => Promise<void>;
+};
+
+export function provedorMeta(cred: CredenciaisMeta): ProvedorAnuncios {
   const cabecalhos = { Authorization: `Bearer ${cred.token}` };
+  const prova: Record<string, string> = cred.appSecret ? { appsecret_proof: provaDoApp(cred.token, cred.appSecret) } : {};
+  let revogado = false;
+  /** Mesmo tradutor de erro, mas anota quando o token não vale mais. */
+  const erro = (json: unknown): string | null => {
+    if (ehRevogacaoMeta(json)) {
+      revogado = true;
+      return "a autorização da Meta venceu ou foi revogada. Clique em \"Reconectar\" em Conexões.";
+    }
+    return erroDaMeta(json);
+  };
+  /** Roda uma chamada e, se o token foi recusado, marca a conexão como "precisa reconectar". */
+  async function comAviso<T>(chamada: () => Promise<T>): Promise<T> {
+    try {
+      return await chamada();
+    } catch (e) {
+      if (revogado) await cred.aoRevogar?.().catch(() => undefined);
+      throw e;
+    }
+  }
 
   async function listar(caminho: string, busca: Record<string, string>): Promise<Linha[]> {
     const linhas: Linha[] = [];
-    let url: string | null = `${BASE}/${caminho}?${new URLSearchParams(busca).toString()}`;
+    let url: string | null = `${BASE}/${caminho}?${new URLSearchParams({ ...busca, ...prova }).toString()}`;
     for (let pagina = 0; url && pagina < MAX_PAGINAS; pagina++) {
-      const json = (await pedirJson("A Meta", url, { headers: cabecalhos }, erroDaMeta)) as {
+      const atual: string = url;
+      const json = (await comAviso(() => pedirJson("A Meta", atual, { headers: cabecalhos }, erro))) as {
         data?: Linha[]; paging?: { next?: string };
       } | null;
       linhas.push(...(json?.data ?? []));
@@ -132,11 +162,11 @@ export function provedorMeta(cred: { token: string; moeda?: string | null }): Pr
   }
 
   async function alterar(id: string, campos: Record<string, string>): Promise<unknown> {
-    return pedirJson("A Meta", `${BASE}/${encodeURIComponent(id)}`, {
+    return comAviso(() => pedirJson("A Meta", `${BASE}/${encodeURIComponent(id)}`, {
       method: "POST",
       headers: { ...cabecalhos, "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams(campos),
-    }, erroDaMeta);
+      body: new URLSearchParams({ ...campos, ...prova }),
+    }, erro));
   }
 
   return {
@@ -185,11 +215,11 @@ export function provedorMeta(cred: { token: string; moeda?: string | null }): Pr
     },
 
     async criarCampanhaPausada(c: NovaCampanha) {
-      const json = (await pedirJson("A Meta", `${BASE}/${contaMeta(c.conta)}/campaigns`, {
+      const json = (await comAviso(() => pedirJson("A Meta", `${BASE}/${contaMeta(c.conta)}/campaigns`, {
         method: "POST",
         headers: { ...cabecalhos, "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams(camposNovaCampanhaMeta(c)),
-      }, erroDaMeta)) as { id?: string } | null;
+        body: new URLSearchParams({ ...camposNovaCampanhaMeta(c), ...prova }),
+      }, erro))) as { id?: string } | null;
       if (!json?.id) throw new ErroProvedor("A Meta não devolveu o ID da campanha criada.");
       return { campanhaId: String(json.id) };
     },

@@ -2,7 +2,7 @@
 
 > Atualizado em 04/10/2026, no fim do modo autônomo. As 10 etapas foram implementadas na branch
 > `desenvolvimento` (nada foi para a `main`). Tudo compila (`npm run lint` e `npm run build` passam)
-> e os 134 testes automáticos passam (`npx vitest run`).
+> e os 160 testes automáticos passam (`npx vitest run`).
 >
 > **O que NÃO foi feito por mim, de propósito:** nenhuma migração foi aplicada, nenhuma API de
 > plataforma foi chamada com credenciais, o `.env.local` não foi lido, e nada foi publicado em produção.
@@ -57,6 +57,12 @@ e, para o seu computador, no arquivo `.env.local`. Depois de mudar na Vercel, fa
 | `GEMINI_API_KEY` | **Recomendada.** Liga a IA do Diretor, do Creative Studio e do rascunho de campanha usando o Google Gemini (plano grátis do AI Studio). Sem chave nenhuma, as telas explicam o que falta e o resto funciona. | `aistudio.google.com/apikey` → entrar com a conta Google → **Criar chave de API**. Não pede cartão. O plano grátis tem limite de pedidos por minuto e por dia. |
 | `ANTHROPIC_API_KEY` | Alternativa paga (Claude, modelo Sonnet). Só é usada se não houver `GEMINI_API_KEY` ou se `IA_PROVEDOR=anthropic`. | `console.anthropic.com` → API Keys → Create Key. O uso é cobrado pela Anthropic conforme o consumo. |
 | `LUNIKO_WEBHOOK_URL` e `LUNIKO_WEBHOOK_SECRET` | **Opcionais. Deixe vazias por enquanto.** Ligam o aviso ao LUNIKO a cada mudança de estado de campanha (contrato em `docs/CONTRATO-LUNIKO.md`). | Só quando o LUNIKO tiver o endereço para receber. |
+| `SITE_URL` | Endereço definitivo do site, sem barra no fim. As URLs de retorno do login nas plataformas são montadas a partir dela. | Você define (ex.: `https://judite-pi.vercel.app`). |
+| `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` | App da JUDITE no Google: liga o botão **Conectar com Google**. | Google Cloud. Passo a passo em `docs/CONEXOES-OAUTH.md`, parte a. |
+| `GOOGLE_ADS_DEVELOPER_TOKEN` | Deixa listar contas e ler/mudar campanhas do Google Ads. | Conta de administrador do Google Ads → Central de API (parte b). |
+| `GOOGLE_ADS_LOGIN_CUSTOMER_ID` | **Opcional.** 10 números da conta de administrador (MCC). | Parte b. |
+| `META_APP_ID`, `META_APP_SECRET` | App da JUDITE na Meta: liga o botão **Conectar com Facebook**. | Meta for Developers (parte c). |
+| `TIKTOK_APP_ID`, `TIKTOK_APP_SECRET` | App da JUDITE no TikTok: liga o botão **Conectar com TikTok**. | TikTok for Business Developers (parte d). |
 | `IA_PROVEDOR` | **Opcional.** `gemini` ou `anthropic`, para forçar um provedor. Vazia: usa o Gemini se `GEMINI_API_KEY` existir, senão a Anthropic. | Você decide. |
 | `JUDITE_PUBLICACAO_REAL` | **Deixe vazia.** Vazia = modo simulado (aprovar campanha não cria nada nas plataformas). Só coloque `1` quando decidir criar campanhas de verdade (sempre pausadas). | Você decide. |
 
@@ -114,7 +120,12 @@ Nada ficou travado, mas estes pontos **não puderam ser testados de verdade** e 
     (c) Meta e TikTok criam só a "casca" pausada; público, palavras-chave e anúncios do plano são finalizados na plataforma.
     (d) Os níveis 3 e 4 de autonomia aparecem na tela, mas não podem ser ligados. (e) "Mercado" hoje são os dados da própria
     empresa (campanhas, site, vendas); tendências, sazonalidade e concorrência ainda não têm fonte de dados.
-11. `docs/VISAO.md` ainda lista as fases como não concluídas: deixei para você marcar depois de testar.
+11. **Conexões por OAuth ("Conectar e pronto"): nada testado com conta real.** O código segue a documentação oficial
+    (diálogo e troca de código da Meta, token de longa duração, `appsecret_proof`, hierarquia de contas do Google Ads) e está
+    coberto por testes com respostas simuladas. Não consegui abrir a página oficial de três chamadas, que escrevi como as conheço:
+    `customers:listAccessibleCustomers` (Google Ads), `oauth2/advertiser/get` (TikTok) e `DELETE /me/permissions` (Meta).
+    Se alguma falhar no primeiro uso, a tela mostra a mensagem; copie para mim. Nenhuma migração foi necessária.
+12. `docs/VISAO.md` ainda lista as fases como não concluídas: deixei para você marcar depois de testar.
 
 ## Roteiro de testes para amanhã
 
@@ -145,10 +156,16 @@ migrações (passos 1 a 3), depois aplicar as 7 migrações e seguir.
 - [ ] **Visão geral** → "Limites da IA": agora há 4 campos. O "Aumento máximo por vez" deve mostrar 10 e o
       "Orçamento mensal máximo" 2000. Mude um valor, salve e confira que ficou.
 
-### 6. Conexões
-- [ ] A página tem 4 blocos: Google Ads (com o aviso do developer token), Presença no Google, Meta e TikTok.
-- [ ] TikTok: abra o passo a passo e confira se o endereço de retorno aparece.
-- [ ] Presença no Google: clique em **Autorizar** (precisa da Parte B do Google já feita). Ao voltar, deve aparecer "autorizada".
+### 6. Conexões (login direto nas plataformas)
+Antes: faça a configuração de administrador de `docs/CONEXOES-OAUTH.md` (uma vez) e o Redeploy.
+- [ ] No fim da página, a caixa **Configuração do administrador** mostra as 3 URLs de retorno e ✓ nas plataformas configuradas.
+- [ ] **Conectar com Google** → login → volta com a lista de contas → escolha a conta → o cartão mostra o nome e o ID.
+- [ ] **Trocar conta** abre a mesma lista. **Desconectar** remove e avisa se o acesso foi revogado no Google.
+- [ ] **Conectar com Facebook** → login → escolha a conta de anúncios. O cartão mostra por quantos dias o acesso vale.
+- [ ] **Conectar com TikTok** (depois de o app ser aprovado) → escolha o anunciante pelo nome.
+- [ ] Em cada cartão, **Opções avançadas** fica recolhido e traz o formulário antigo.
+- [ ] Entre com um usuário que não é o dono: os botões de conectar e a caixa do administrador não aparecem.
+- [ ] Depois de conectar: **Tráfego** → **Sincronizar dados**.
 
 ### 7. Presença no Google
 - [ ] Abra **Presença no Google** → em Configuração, escolha a propriedade do Search Console → Salvar.

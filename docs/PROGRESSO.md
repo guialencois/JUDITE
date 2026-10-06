@@ -383,3 +383,38 @@ campanha, anúncios, público e orçamento, pôr na fila de aprovação e, com a
 - O caminho de volta LUNIKO → JUDITE e o reenvio de eventos que falharam não existem ainda.
 
 **Como testar:** item 12 do roteiro em `docs/PENDENTE.md`.
+
+## Conexões no estilo "Conectar e pronto": app OAuth da JUDITE por plataforma (06/10/2026)
+
+**Pedido do Jackson:** um app OAuth da própria JUDITE por plataforma; o dono só clica em Conectar, faz login e escolhe a conta.
+
+**O que mudou**
+- `src/lib/conexoes/app.ts`: credenciais do app em variáveis de ambiente (Google, Meta, TikTok), com volta para o valor salvo
+  por workspace quando a variável não existe. A conexão guarda de qual app o token veio (`app_origem`), porque um token só
+  funciona com o app que o emitiu.
+- `src/lib/conexoes/oauth.ts`: state em cookie httpOnly com comparação em tempo constante e PKCE (S256).
+- `src/lib/conexoes/plataformas.ts`: troca de código por token, listagem de contas, `appsecret_proof`, revogação e validade.
+- **Google Ads:** PKCE, `access_type=offline`, escopo só `adwords`. Na volta lista as contas diretas e as contas-clientes de
+  uma MCC; o dono escolhe e ficam salvos `cliente` e `gerente` (login_customer_id). `invalid_grant` marca "precisa reconectar".
+- **Meta (novo):** rotas `/api/conexoes/meta/iniciar` e `/callback`, token de longa duração, `/me/adaccounts`, `appsecret_proof`
+  em todas as chamadas, validade guardada e aviso 7 dias antes. O token de usuário do sistema virou opção avançada.
+- **TikTok:** usa o app da plataforma e lista os anunciantes com nome.
+- **Desconectar:** revoga no Google e na Meta e apaga os tokens.
+- **Página Conexões** refeita: um cartão por plataforma, "Trocar conta", "Desconectar", "Opções avançadas" recolhido e a caixa
+  "Configuração do administrador" (só o dono) com as URLs de retorno e os nomes das variáveis que faltam.
+- `docs/CONEXOES-OAUTH.md`: passo a passo para iniciante. Sem migração.
+
+**Decisões**
+- `redirect_uri` sai de `SITE_URL`. Sem ela, cai no endereço do pedido (para a prévia funcionar) e a caixa do administrador avisa.
+- A Meta não tem PKCE no diálogo de login; a proteção é o state mais a chave secreta do app na troca do código.
+- A troca de código da Meta e a lista de anunciantes do TikTok são GET com os dados na consulta, como as plataformas
+  documentam. Saem só do servidor e nunca são registradas.
+- `appsecret_proof` só é enviado para token emitido pelo app da JUDITE; token de usuário do sistema veio de outro app.
+- No Google, revogar um token derruba a autorização inteira do e-mail. Se Google Ads e Presença estão conectados, desconectar
+  um só não revoga; a tela explica.
+- Reconectar a Meta mantém a conta escolhida só se o novo login também alcança essa conta.
+- A escolha de conta só aceita o que veio na lista da plataforma; conta já ligada a outro workspace é recusada, como antes.
+
+**Limitação:** nada foi testado com conta real (não há credenciais no ambiente).
+
+**Como testar:** `docs/CONEXOES-OAUTH.md` e o item 6 do roteiro em `docs/PENDENTE.md`.
