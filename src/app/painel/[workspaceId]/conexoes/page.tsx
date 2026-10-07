@@ -2,14 +2,20 @@
  * Conexões do workspace, no estilo "Conectar e pronto": a JUDITE tem um app OAuth em cada plataforma,
  * o dono clica em "Conectar", faz login e escolhe a conta. Os tokens ficam criptografados e nunca
  * aparecem na tela. O jeito antigo (cada workspace com o próprio app ou token) fica em "Opções avançadas".
+ *
+ * Alternativa opcional: a Windsor.ai, com a chave de API da própria empresa. O dono escolhe, plataforma
+ * por plataforma, entre "Conexão própria (OAuth)" (padrão) e "Windsor".
  */
 
 import { mccPadraoGoogle, variaveisFaltando } from "@/lib/conexoes/app";
 import { googleRetorno, metaRetorno, siteFixado, tiktokRetorno, urlDoSite } from "@/lib/conexoes/config";
 import { DIAS_DE_AVISO, diasAteVencer, type ContaDisponivel } from "@/lib/conexoes/plataformas";
 import { criptoConfigurada } from "@/lib/cripto";
+import { NOME_PLATAFORMA, PLATAFORMAS } from "@/lib/trafego/tipos";
+import { lerDadosWindsor, NOME_FONTE } from "@/lib/windsor/conexao";
 import { carregarWorkspace } from "../carregar";
 import { desconectar, escolherConta, salvarGoogle, salvarGoogleApp, salvarMeta, salvarTikTok, salvarTikTokApp } from "./actions";
+import { atualizarContasWindsor, salvarChaveWindsor, salvarFonteWindsor, salvarPresencaWindsor } from "./windsor";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +48,13 @@ const ERROS: Record<string, string> = {
   "tiktok-autorizar": "Conecte o TikTok antes de escolher a conta.",
   "tiktok-dados": "Escolha uma conta de anúncios do TikTok.",
   "tiktok-conta": "Essa conta de anúncios não está entre as que você autorizou no TikTok.",
+  "windsor-dados": "Confira a chave da Windsor: cole o valor inteiro, sem espaços.",
+  "windsor-chave": "A Windsor recusou essa chave de API. Copie a chave de novo no site da Windsor e tente outra vez.",
+  "windsor-fora": "Não foi possível falar com a Windsor agora para conferir a chave. Nada foi alterado; tente de novo em instantes.",
+  "windsor-salvar": "Não foi possível salvar. Se a migração da Windsor ainda não foi aplicada no Supabase, aplique-a primeiro (veja docs/PENDENTE.md).",
+  "windsor-sem-chave": "Salve a chave da Windsor antes de escolher as contas.",
+  "windsor-conta": "Essa conta não está na lista que a Windsor devolveu. Clique em Atualizar lista de contas e escolha de novo.",
+  "windsor-escolher": "Para usar a Windsor, marque pelo menos uma conta.",
 };
 const AVISOS: Record<string, string> = {
   "google-app": "Credenciais do Google salvas (criptografadas).",
@@ -59,6 +72,11 @@ const AVISOS: Record<string, string> = {
   "tiktok-app": "Credenciais do app do TikTok salvas (criptografadas).",
   "tiktok-autorizado": "TikTok conectado. Agora escolha a conta de anúncios abaixo.",
   "tiktok-conectado": "Conta do TikTok escolhida e pronta.",
+  "windsor-salva": "Chave da Windsor conferida e salva (criptografada). Agora escolha, em cada plataforma, se quer usar a Windsor.",
+  "windsor-atualizada": "Lista de contas da Windsor atualizada.",
+  "windsor-fonte": "Pronto: essa parte passa a usar a Windsor.",
+  "windsor-propria": "Pronto: essa parte volta a usar a conexão própria.",
+  "windsor-apagada": "Chave da Windsor apagada da JUDITE. Tudo voltou para a conexão própria.",
 };
 
 const campo = "w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100";
@@ -136,6 +154,9 @@ export default async function ConexoesPage(props: PageProps<"/painel/[workspaceI
   const m = (meta?.dados ?? {}) as Dados;
   const t = (tiktok?.dados ?? {}) as Dados;
   const p = (presenca?.dados ?? {}) as Dados;
+  const windsor = linha("windsor");
+  const w = lerDadosWindsor(windsor?.dados);
+  const temWindsor = Boolean(windsor?.conectado_em);
 
   const cripto = criptoConfigurada();
   const site = await urlDoSite();
@@ -158,7 +179,8 @@ export default async function ConexoesPage(props: PageProps<"/painel/[workspaceI
       <header>
         <h1 className="font-serif text-3xl">Conexões</h1>
         <p className="text-sm text-zinc-500">
-          Clique em Conectar, entre na plataforma e escolha a conta de anúncios. A JUDITE usa as APIs oficiais, sem intermediário pago.
+          Clique em Conectar, entre na plataforma e escolha a conta de anúncios. O padrão é a conexão própria, pelas APIs oficiais.
+          Quem já usa a Windsor.ai pode ligar a chave no fim da página e escolher a fonte de cada plataforma.
           {!dono && " Só o dono do workspace pode conectar, trocar ou desconectar."}
         </p>
       </header>
@@ -398,6 +420,117 @@ export default async function ConexoesPage(props: PageProps<"/painel/[workspaceI
         )}
       </section>
 
+      {/* ------------------------------------------------------------ WINDSOR */}
+      <section id="windsor" className={cartao}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-xl font-medium">Windsor.ai (opcional)</h2>
+          <Situacao conectada={temWindsor} texto={temWindsor ? "chave salva" : "não usada"} />
+        </div>
+        <p className="text-sm text-zinc-400">
+          A Windsor é um serviço pago que liga as contas de anúncio por você. Se a sua empresa já tem conta lá, cole a chave de API:
+          a JUDITE confere a chave na Windsor, guarda criptografada e passa a poder ler os dados e executar as ações por ela.
+          Cada empresa usa a própria chave. As ações continuam passando pelos mesmos freios (limites, aprovação do dono, histórico).
+        </p>
+
+        {dono && cripto && (
+          <form action={salvarChaveWindsor} className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
+            <input type="hidden" name="workspaceId" value={ws} />
+            <label className="text-xs text-zinc-400">Chave de API da Windsor
+              <input name="chave" type="password" required autoComplete="off" placeholder={temWindsor ? "•••••• salva (cole outra para trocar)" : "cole a chave aqui"} className={campo} />
+            </label>
+            <button className={temWindsor ? botaoNeutro : botao}>Testar e salvar</button>
+          </form>
+        )}
+        <p className="text-xs text-zinc-500">
+          Onde pegar: entre em <code className={codigo}>onboard.windsor.ai</code>, ligue as contas (Google Ads, Facebook Ads, TikTok Ads...) e copie a
+          chave em &quot;API Key&quot;. Passo a passo em <code className={codigo}>docs/PENDENTE.md</code>.
+        </p>
+
+        {temWindsor && dono && (
+          <div className="flex flex-wrap items-center gap-3">
+            <form action={atualizarContasWindsor}>
+              <input type="hidden" name="workspaceId" value={ws} />
+              <button className={botaoNeutro}>Atualizar lista de contas</button>
+            </form>
+            <Desconectar ws={ws} provedor="windsor" rotulo="Apagar a chave" />
+            {w.validadoEm && <span className="text-xs text-zinc-500">Conferida em {w.validadoEm.slice(0, 10).split("-").reverse().join("/")}.</span>}
+          </div>
+        )}
+
+        {temWindsor && (
+          <div className="space-y-3">
+            <p className="text-sm font-medium">De onde vem cada plataforma</p>
+            {PLATAFORMAS.map((plataforma) => {
+              const contas = w.contas[plataforma] ?? [];
+              const marcadas = w.escolhidas[plataforma] ?? [];
+              const fonte = w.fonte[plataforma] ?? "propria";
+              return (
+                <form key={plataforma} action={salvarFonteWindsor} className={avancado + " space-y-2"}>
+                  <input type="hidden" name="workspaceId" value={ws} />
+                  <input type="hidden" name="plataforma" value={plataforma} />
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm">{NOME_PLATAFORMA[plataforma]} <span className="text-xs text-zinc-500">· hoje: {NOME_FONTE[fonte]}</span></p>
+                    {dono && (
+                      <div className="flex items-center gap-2">
+                        <select name="fonte" defaultValue={fonte} aria-label={`Fonte de ${NOME_PLATAFORMA[plataforma]}`} className="rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100">
+                          <option value="propria">Conexão própria (OAuth)</option>
+                          <option value="windsor" disabled={!contas.length}>Windsor</option>
+                        </select>
+                        <button className={botaoNeutro}>Salvar</button>
+                      </div>
+                    )}
+                  </div>
+                  {contas.length ? (
+                    <div className="flex flex-wrap gap-x-4 gap-y-1">
+                      {contas.map((c) => (
+                        <label key={c.id} className="flex items-center gap-2 text-xs text-zinc-300">
+                          <input type="checkbox" name="contas" value={c.id} defaultChecked={marcadas.includes(c.id)} disabled={!dono} />
+                          {c.nome} · {c.id}
+                        </label>
+                      ))}
+                    </div>
+                  ) : <p className="text-xs text-zinc-500">Nenhuma conta de {NOME_PLATAFORMA[plataforma]} ligada na Windsor. Ligue lá e clique em &quot;Atualizar lista de contas&quot;.</p>}
+                  {fonte === "windsor" && <p className="text-xs text-sky-300">Dados e ações de {NOME_PLATAFORMA[plataforma]} pela Windsor.</p>}
+                </form>
+              );
+            })}
+
+            <form action={salvarPresencaWindsor} className={avancado + " space-y-2"}>
+              <input type="hidden" name="workspaceId" value={ws} />
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm">Presença no Google <span className="text-xs text-zinc-500">· hoje: {NOME_FONTE[w.fonte.presenca ?? "propria"]}</span></p>
+                {dono && (
+                  <div className="flex items-center gap-2">
+                    <select name="fonte" defaultValue={w.fonte.presenca ?? "propria"} aria-label="Fonte da Presença no Google" className="rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100">
+                      <option value="propria">Conexão própria (OAuth)</option>
+                      <option value="windsor" disabled={!(w.contas.google_my_business?.length || w.contas.searchconsole?.length)}>Windsor (só leitura)</option>
+                    </select>
+                    <button className={botaoNeutro}>Salvar</button>
+                  </div>
+                )}
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <label className="text-xs text-zinc-400">Perfil da Empresa (Windsor)
+                  <select name="local" defaultValue={w.escolhidas.google_my_business?.[0] ?? ""} disabled={!dono} className={campo}>
+                    <option value="">Não ler o perfil pela Windsor</option>
+                    {(w.contas.google_my_business ?? []).map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                  </select>
+                </label>
+                <label className="text-xs text-zinc-400">Site no Search Console (Windsor)
+                  <select name="site" defaultValue={w.escolhidas.searchconsole?.[0] ?? ""} disabled={!dono} className={campo}>
+                    <option value="">Não ler o Search Console pela Windsor</option>
+                    {(w.contas.searchconsole ?? []).map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                  </select>
+                </label>
+              </div>
+              <p className="text-xs text-zinc-500">
+                Pela Windsor a JUDITE só LÊ o perfil e a busca. Responder avaliações e publicar posts continua pela conexão própria do Google, com aprovação do dono.
+              </p>
+            </form>
+          </div>
+        )}
+      </section>
+
       {/* ------------------------------------------------------------ ADMINISTRADOR */}
       {dono && (
         <section className={cartao + " border-zinc-700"}>
@@ -447,7 +580,7 @@ export default async function ConexoesPage(props: PageProps<"/painel/[workspaceI
       )}
 
       <p className="text-xs text-zinc-500">
-        Depois de conectar, abra Tráfego e clique em Sincronizar dados. Desconectar revoga o acesso na plataforma (Google e Meta) e apaga os tokens da JUDITE.
+        Depois de conectar (ou de trocar a fonte), abra Tráfego e clique em Sincronizar dados. Desconectar revoga o acesso na plataforma (Google e Meta) e apaga os tokens da JUDITE.
       </p>
     </main>
   );

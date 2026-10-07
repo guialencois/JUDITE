@@ -4,8 +4,9 @@
  */
 
 import { AvisoConexoes } from "@/components/trafego/AvisoConexoes";
+import { FonteDosDados } from "@/components/trafego/FonteDosDados";
 import { TabelaCampanhas, type LinhaCampanhaTabela } from "@/components/trafego/TabelaCampanhas";
-import { plataformasSemConexao } from "@/lib/conexoes/status";
+import { situacaoDasConexoes } from "@/lib/conexoes/status";
 import { podeAgir } from "@/lib/trafego/acesso";
 import { brl, derivar, somar } from "@/lib/trafego/metricas";
 import { dia, metricaDoBanco, NOME_PLATAFORMA, PLATAFORMAS, type LinhaMetrica, type Plataforma } from "@/lib/trafego/tipos";
@@ -34,7 +35,7 @@ export default async function PaginaGerenciador(props: PageProps<"/painel/[works
     supabase.from("trafego_config").select("valor").eq("workspace_id", workspace.id).eq("chave", "custos_percent").maybeSingle(),
   ]);
   const custos = Number(cfg?.valor ?? 25);
-  const semConexao = await plataformasSemConexao(supabase, workspace.id);
+  const { semConexao, fontes } = await situacaoDasConexoes(supabase, workspace.id);
 
   const porCampanha = new Map<string, LinhaMetrica[]>();
   for (const r of metricas ?? []) {
@@ -72,6 +73,7 @@ export default async function PaginaGerenciador(props: PageProps<"/painel/[works
       </header>
 
       <AvisoConexoes workspaceId={workspace.id} faltando={semConexao} total={PLATAFORMAS.length} />
+      <FonteDosDados workspaceId={workspace.id} fontes={fontes} />
 
       <TabelaCampanhas workspaceId={workspace.id} podeAgir={podeAgir(papel)} linhas={linhas} />
 

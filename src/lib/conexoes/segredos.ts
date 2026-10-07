@@ -3,7 +3,7 @@ import { appGoogle, appMeta, appTikTok, developerTokenGoogle } from "./app";
 import type { createAdminClient } from "@/lib/supabase/admin";
 
 type Admin = ReturnType<typeof createAdminClient>;
-export type Provedor = "google_ads" | "meta" | "tiktok" | "google_presenca";
+export type Provedor = "google_ads" | "meta" | "tiktok" | "google_presenca" | "windsor";
 
 /**
  * Lê a conexão de um workspace com os segredos já abertos. SOMENTE no servidor,
@@ -44,7 +44,9 @@ export async function gravarConexao(
         ? Boolean(segredos.access_token && dados.conta)
         : provedor === "google_presenca"
           ? Boolean(segredos.refresh_token && (dados.local || dados.site_gsc))
-          : Boolean(segredos.token && dados.conta);
+          : provedor === "windsor"
+            ? Boolean(segredos.api_key)
+            : Boolean(segredos.token && dados.conta);
 
   const agora = new Date().toISOString();
   return db.from("conexoes").upsert({

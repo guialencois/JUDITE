@@ -11,6 +11,9 @@ import {
   abrirPresenca, lerAvaliacoes, lerBusca, lerDesempenho, lerLocal,
   type AcessoPresenca, type Avaliacoes, type DesempenhoPerfil, type LinhaBusca, type LocalPerfil,
 } from "./google";
+import { lerConexao } from "@/lib/conexoes/segredos";
+import { contasEscolhidas, fonteDaPlataforma } from "@/lib/windsor/conexao";
+import { lerAvaliacoesWindsor, lerBuscaWindsor, lerDesempenhoWindsor, lerLocalWindsor, type AcessoWindsor } from "./windsor";
 
 type Admin = ReturnType<typeof createAdminClient>;
 
@@ -27,6 +30,8 @@ async function tentar<T>(fn: () => Promise<T>): Promise<Parte<T>> {
 }
 
 export type Presenca = {
+  /** Por onde foi lida: conexão própria do Google ou Windsor (só leitura). */
+  fonte: "google" | "windsor";
   acesso: AcessoPresenca;
   periodo: { de: string; ate: string; dias: number };
   perfil: Parte<LocalPerfil> | null;
@@ -37,7 +42,50 @@ export type Presenca = {
   paginas: Parte<LinhaBusca[]> | null;
 };
 
+/** O dono escolheu ler a Presença pela Windsor? Devolve o acesso (chave e contas escolhidas) ou null. */
+async function acessoWindsor(db: Admin, workspaceId: string): Promise<AcessoWindsor | { erro: string } | null> {
+  let conexao: Awaited<ReturnType<typeof lerConexao>>;
+  try {
+    conexao = await lerConexao(db, workspaceId, "windsor");
+  } catch {
+    return { erro: "Não foi possível abrir a chave da Windsor. Salve a chave de novo na página Conexões." };
+  }
+  if (fonteDaPlataforma(conexao.dados, "presenca") !== "windsor") return null;
+  if (!conexao.segredos.api_key) return { erro: "A Presença no Google está configurada para a Windsor, mas a chave não está salva. Salve a chave em Conexões." };
+  return {
+    chave: conexao.segredos.api_key,
+    local: contasEscolhidas(conexao.dados, "google_my_business")[0]?.id ?? null,
+    siteGsc: contasEscolhidas(conexao.dados, "searchconsole")[0]?.id ?? null,
+  };
+}
+
+async function lerPresencaWindsor(w: AcessoWindsor): Promise<{ ok: true; presenca: Presenca } | { ok: false; motivo: string }> {
+  if (!w.local && !w.siteGsc) return { ok: false, motivo: "Escolha em Conexões o Perfil da Empresa e o site do Search Console que a JUDITE deve ler pela Windsor." };
+  const hoje = hojeEmBrasilia();
+  const ate = deslocar(hoje, -3);
+  const de = deslocar(ate, -(DIAS_PRESENCA - 1));
+  const [perfil, avaliacoes, desempenho, buscaTotal, consultas, paginas] = await Promise.all([
+    w.local ? tentar(() => lerLocalWindsor(w, de, ate)) : null,
+    w.local ? tentar(() => lerAvaliacoesWindsor(w, deslocar(hoje, -365), hoje)) : null,
+    w.local ? tentar(() => lerDesempenhoWindsor(w, de, ate, DIAS_PRESENCA)) : null,
+    w.siteGsc ? tentar(() => lerBuscaWindsor(w, de, ate, null, 1)) : null,
+    w.siteGsc ? tentar(() => lerBuscaWindsor(w, de, ate, "query", 25)) : null,
+    w.siteGsc ? tentar(() => lerBuscaWindsor(w, de, ate, "page", 15)) : null,
+  ]);
+  return {
+    ok: true,
+    presenca: {
+      fonte: "windsor", acesso: { token: "", conta: null, local: w.local, siteGsc: w.siteGsc },
+      periodo: { de, ate, dias: DIAS_PRESENCA }, perfil, avaliacoes, desempenho, buscaTotal, consultas, paginas,
+    },
+  };
+}
+
 export async function lerPresenca(db: Admin, workspaceId: string): Promise<{ ok: true; presenca: Presenca } | { ok: false; motivo: string }> {
+  const windsor = await acessoWindsor(db, workspaceId);
+  if (windsor && "erro" in windsor) return { ok: false, motivo: windsor.erro };
+  if (windsor) return lerPresencaWindsor(windsor);
+
   const aberto = await abrirPresenca(db, workspaceId);
   if (!aberto.ok) return aberto;
   const a = aberto.acesso;
@@ -55,7 +103,7 @@ export async function lerPresenca(db: Admin, workspaceId: string): Promise<{ ok:
     a.siteGsc ? tentar(() => lerBusca(a, de, ate, "query", 25)) : null,
     a.siteGsc ? tentar(() => lerBusca(a, de, ate, "page", 15)) : null,
   ]);
-  return { ok: true, presenca: { acesso: a, periodo: { de, ate, dias: DIAS_PRESENCA }, perfil, avaliacoes, desempenho, buscaTotal, consultas, paginas } };
+  return { ok: true, presenca: { fonte: "google", acesso: a, periodo: { de, ate, dias: DIAS_PRESENCA }, perfil, avaliacoes, desempenho, buscaTotal, consultas, paginas } };
 }
 
 /** O que falta preencher no perfil (só fatos lidos do Google, sem palpite). */

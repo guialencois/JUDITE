@@ -23,7 +23,7 @@
 
 ## Migrações
 
-> **Situação em 05/10/2026:** as 9 migrações da tabela abaixo estão aplicadas no banco JUDITE (as duas últimas pelo Claude Code, a pedido do Jackson; a nº 7 já estava aplicada). Não há migração pendente.
+> **Situação em 07/10/2026:** as migrações nº 1 a 9 estão aplicadas no banco JUDITE. **Falta aplicar a nº 10** (Windsor), criada em 07/10/2026. Sem ela o resto do sistema funciona igual; só não dá para salvar a chave da Windsor (a tela avisa).
 
 Aplicar **nesta ordem**. Onde: site do **Supabase** → projeto JUDITE → **SQL Editor** → **New query** →
 copiar o conteúdo do arquivo (pasta `supabase/migrations`), colar e clicar em **Run**. Uma de cada vez.
@@ -40,6 +40,7 @@ Peça ao Claude no chat para revisar cada arquivo antes, se quiser.
 | 7 | `20261004070000_etapa10_autonomia.sql` | Tabela `autonomia` (chave ligada/desligada por workspace; nasce desligada). |
 | 8 | `20261005010000_diretor_trafego_aprovacoes.sql` | Permite marcar uma ação da autonomia como `aprovada` ou `dispensada` na página **Diretor de Tráfego**. Só amplia uma lista de valores. Sem ela, a página funciona, mas os botões Aprovar/Dispensar dessas ações avisam que falta a migração. |
 | 9 | `20261005020000_cmo_autonoma.sql` | CMO autônoma: guarda o plano completo de cada campanha, os novos estados (aprendizado, otimização, pausada pela JUDITE, concluída...), o histórico de cada mudança (`campanha_eventos`), as ideias (`campanha_ideias`), o registro do ciclo diário (`cmo_execucoes`), o nível de autonomia e os limites por canal. **Precisa das nº 2, 5, 6 e 7 antes.** Só acrescenta; não apaga nada. |
+| 10 | `20261007010000_windsor_conexao.sql` | **PENDENTE.** Aceita `windsor` como tipo de conexão na tabela `conexoes` (a chave de API fica criptografada, como os outros tokens). Só amplia uma lista de valores. **Precisa da nº 4 antes** (já aplicada). |
 
 Observações:
 - Todas as tabelas novas têm `workspace_id` e RLS ligado: membros leem; escrita só pelo servidor ou por dono/admin.
@@ -66,7 +67,38 @@ e, para o seu computador, no arquivo `.env.local`. Depois de mudar na Vercel, fa
 | `IA_PROVEDOR` | **Opcional.** `gemini` ou `anthropic`, para forçar um provedor. Vazia: usa o Gemini se `GEMINI_API_KEY` existir, senão a Anthropic. | Você decide. |
 | `JUDITE_PUBLICACAO_REAL` | **Deixe vazia.** Vazia = modo simulado (aprovar campanha não cria nada nas plataformas). Só coloque `1` quando decidir criar campanhas de verdade (sempre pausadas). | Você decide. |
 
-- **Pode apagar:** `WINDSOR_API_KEY` (da Vercel e do `.env.local`). Não é mais lida por nada.
+- **Pode apagar:** `WINDSOR_API_KEY` (da Vercel e do `.env.local`). Não é lida por nada. A Windsor voltou em 07/10/2026 como
+  opção, mas **sem variável global**: cada empresa cola a própria chave na página Conexões (veja a seção abaixo).
+
+## Windsor.ai (opcional, por workspace)
+
+A Windsor é uma alternativa às conexões próprias (OAuth). O padrão continua sendo a conexão própria; só muda se o dono trocar.
+
+**Passo a passo para pegar a chave e ligar:**
+1. Aplique a migração nº 10 (site do **Supabase** → projeto JUDITE → **SQL Editor** → **New query** → cole o conteúdo de
+   `supabase/migrations/20261007010000_windsor_conexao.sql` → **Run**).
+2. No navegador, entre em `https://onboard.windsor.ai` com a conta da Windsor da empresa.
+3. Na lista de fontes de dados, ligue as contas que a JUDITE vai usar: **Google Ads**, **Facebook Ads**, **TikTok Ads** e, se
+   quiser, **Google My Business** e **Google Search Console**. Em cada uma, faça o login e **marque a conta** (só logar não basta).
+4. Na mesma página, procure o campo **API Key** (fica no topo, perto das fontes já ligadas) e clique em copiar.
+5. Na **JUDITE** → **Conexões** → no fim da página, seção **Windsor.ai (opcional)** → cole a chave → **Testar e salvar**.
+   A JUDITE confere a chave na Windsor antes de guardar. A chave fica criptografada e nunca aparece de novo na tela.
+6. Ainda na seção Windsor, em **De onde vem cada plataforma**: marque as contas, troque o seletor para **Windsor** e clique em **Salvar**
+   (uma plataforma de cada vez). Para voltar atrás, escolha **Conexão própria (OAuth)** e salve.
+7. Abra **Tráfego** → **Sincronizar dados**. No topo do Dashboard e do Gerenciador aparece a linha "Fonte dos dados e das ações".
+8. Ligou uma conta nova na Windsor depois? Clique em **Atualizar lista de contas**. Para remover tudo: **Apagar a chave**.
+
+**Como ficou a escrita:** pausar, ativar e mudar o orçamento diário vão **pela Windsor** (servidor MCP dela, com a chave de API no
+cabeçalho, sem login interativo). Criar campanha pela Windsor só existe para a **Meta** e nasce sempre pausada. Toda ação passa
+antes pelos mesmos freios de `src/lib/trafego/limites.ts` e `executar.ts` (10% por ajuste, R$ 100/dia sem aprovação, teto mensal,
+só o dono confirma acima do limite). **Presença no Google** pela Windsor é só leitura; publicar continua pela conexão própria.
+
+**Limites que você precisa saber:**
+- A Windsor é paga e as ações de escrita dependem do plano da conta lá. Se o plano não tiver, a ação falha e fica no histórico.
+- A primeira leitura de uma conta pode demorar minutos (a Windsor busca os dados na hora). Se a sincronização avisar que demorou, tente de novo depois.
+- TikTok pela Windsor só aceita orçamento em valor inteiro (sem centavos). A JUDITE recusa em vez de arredondar.
+- No Google Ads pela Windsor não dá para pausar um anúncio isolado nem criar campanha; campanha e orçamento funcionam.
+- Campanha pausada e sem entrega nos últimos 7 dias pode não vir na lista da Windsor. Ela aparece quando voltar a ter dados.
 - Continuam valendo: `CRON_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`, `JUDITE_CHAVE_CRIPTO`, etc.
 
 ## Liberações externas necessárias
@@ -91,6 +123,11 @@ Nada ficou travado, mas estes pontos **não puderam ser testados de verdade** e 
    Não consegui abrir a documentação oficial de dentro do modo autônomo; o que fiz foi confirmar, sem credenciais,
    quais **versões** respondem hoje: Meta `v26.0`, Google Ads `v26`, TikTok `v1.3`. As versões ficam em constantes
    em `src/lib/conexoes/config.ts`. É provável que o primeiro uso real revele algum campo a ajustar.
+   **Windsor (07/10/2026):** a documentação oficial foi lida e os nomes de campos e de ações foram conferidos nas listas
+   públicas da Windsor, mas **nenhuma chamada foi feita com uma chave real** (não há chave no ambiente). Confirmei sem chave
+   que o servidor MCP aceita o cabeçalho `Authorization: Bearer` e recusa chave inválida. Falta o teste do item 6b do roteiro.
+   Dois pontos a olhar no primeiro uso: o campo `budget_amount` do Google Ads (orçamento diário em reais) e o formato do ID da
+   campanha devolvido ao criar campanha na Meta.
 2. **TikTok: valor das compras.** Leio gasto, impressões, cliques e conversões, mas **não** leio o valor das compras
    (receita fica 0), para não arriscar um nome de campo errado. O faturamento real vem da página Comercial.
 3. **Google Ads: criar campanha.** Não implementado (a criação exige campos que não pude confirmar). Ler, pausar,
@@ -166,6 +203,16 @@ Antes: faça a configuração de administrador de `docs/CONEXOES-OAUTH.md` (uma 
 - [ ] Em cada cartão, **Opções avançadas** fica recolhido e traz o formulário antigo.
 - [ ] Entre com um usuário que não é o dono: os botões de conectar e a caixa do administrador não aparecem.
 - [ ] Depois de conectar: **Tráfego** → **Sincronizar dados**.
+
+### 6b. Windsor.ai (opcional; precisa da migração nº 10)
+- [ ] Em **Conexões**, seção **Windsor.ai**: cole uma chave errada → deve recusar sem salvar. Cole a certa → "Chave da Windsor conferida e salva".
+- [ ] A lista de contas de cada plataforma aparece. Marque uma conta da Meta, escolha **Windsor** e salve.
+- [ ] **Tráfego** → **Sincronizar dados**. A linha "Fonte dos dados e das ações" mostra "Meta Ads pela Windsor.ai".
+- [ ] Confira o gasto de um dia com o Gerenciador de Anúncios da Meta (os valores devem bater em reais).
+- [ ] No **Gerenciador**, pause uma campanha de teste. Confira na Meta que pausou e veja o registro no histórico de ações.
+- [ ] Tente subir o orçamento mais de 10%: deve pedir confirmação, igual à conexão própria.
+- [ ] Volte o seletor para **Conexão própria (OAuth)** e sincronize: os números não devem dobrar.
+- [ ] Entre com um usuário que não é o dono: o campo da chave e os botões de salvar não aparecem.
 
 ### 7. Presença no Google
 - [ ] Abra **Presença no Google** → em Configuração, escolha a propriedade do Search Console → Salvar.

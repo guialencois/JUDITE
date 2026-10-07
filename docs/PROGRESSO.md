@@ -418,3 +418,35 @@ campanha, anúncios, público e orçamento, pôr na fila de aprovação e, com a
 **Limitação:** nada foi testado com conta real (não há credenciais no ambiente).
 
 **Como testar:** `docs/CONEXOES-OAUTH.md` e o item 6 do roteiro em `docs/PENDENTE.md`.
+
+## Windsor.ai como provedor opcional por workspace (07/10/2026)
+
+**O que mudou**
+- `src/lib/windsor/api.ts`: leitura pela API REST da Windsor. A API só aceita a chave na URL, então a URL nunca entra em log
+  nem em erro, e todo texto que volta passa por `semChave()` (a Windsor repete a chave na resposta quando a recusa).
+- `src/lib/windsor/mcp.ts`: cliente do servidor MCP da Windsor (`@modelcontextprotocol/sdk`, Streamable HTTP), com a chave no
+  cabeçalho `Authorization: Bearer`. Usado para listar as contas (`get_connectors`) e para as ações (`execute_action`).
+- `src/lib/anuncios/windsor.ts`: `ProvedorAnuncios` da Windsor. Leitura de métricas e campanhas (Google Ads, Meta, TikTok) e
+  escrita: pausar, ativar, orçamento diário e, só na Meta, criar campanha (sempre pausada).
+- `src/lib/anuncios/provedor.ts`: `provedorDoWorkspace` olha primeiro a fonte escolhida pelo dono. Padrão: conexão própria.
+- `src/lib/windsor/conexao.ts`: o que fica guardado (contas, escolhidas, fonte por plataforma) e o formato único das contas.
+- Página **Conexões**: seção "Windsor.ai (opcional)" com chave (testar e salvar, atualizar contas, apagar) e o seletor por
+  plataforma. Dashboard e Gerenciador mostram a linha "Fonte dos dados e das ações".
+- **Presença no Google**: leitura pela Windsor (`src/lib/presenca/windsor.ts`). Publicar continua pela conexão própria, com aprovação.
+- Migração `20261007010000_windsor_conexao.sql` (**não aplicada**): aceita `windsor` em `conexoes.provedor`.
+- 27 testes novos em `src/lib/anuncios/windsor.test.ts` (187 no total).
+
+**Decisões**
+- **Escrita pela Windsor.** A documentação diz que o servidor MCP aceita a chave de API como Bearer, sem login interativo, e o
+  servidor confirmou o esquema Bearer nos testes sem chave. Por isso as ações foram implementadas pelo MCP.
+- `executar.ts` e `limites.ts` **não foram alterados**: a Windsor é só mais um provedor atrás dos mesmos freios.
+- Fonte escolhida = Windsor e algo falta (chave ou conta): a JUDITE avisa o que falta; não cai escondido na conexão própria.
+- As contas são gravadas no formato dos provedores nativos (`act_123`, `123-456-7890`), para trocar a fonte sem duplicar
+  métricas. A trava "uma conta de anúncios não pertence a dois workspaces" vale também para as contas da Windsor.
+- Criar campanha pela Windsor só na Meta (objetivos com equivalente direto). No Google Ads a ação da Windsor cria campanha de
+  Pesquisa ou Display sem relação com o objetivo do rascunho, então ficou de fora, como no provedor nativo.
+- TikTok pela Windsor aceita só orçamento inteiro: a JUDITE recusa valor com centavos em vez de arredondar o que foi aprovado.
+- Sem variável global: a chave é de cada workspace, criptografada com `src/lib/cripto.ts`. Só o dono salva, testa ou apaga.
+- `docs/VISAO.md` atualizado: a regra "sem Windsor" virou "padrão é a conexão própria; Windsor é opção por workspace".
+
+**Limitação:** nada foi testado com uma chave real da Windsor. Roteiro no item 6b de `docs/PENDENTE.md`.

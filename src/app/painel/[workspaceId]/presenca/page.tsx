@@ -8,6 +8,7 @@ import Link from "next/link";
 import { BotaoEnviar } from "@/components/BotaoEnviar";
 import { listarLocais, listarSitesGsc, type LinhaBusca, type LocalPerfil } from "@/lib/presenca/google";
 import { lacunasDoPerfil, lerPresenca, type Parte } from "@/lib/presenca/painel";
+import { fonteDaPlataforma } from "@/lib/windsor/conexao";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { podeAgir } from "@/lib/trafego/acesso";
 import { inteiro, percent } from "@/lib/trafego/metricas";
@@ -93,9 +94,14 @@ export default async function PresencaPage(props: PageProps<"/painel/[workspaceI
   const erro = typeof params.erro === "string" ? ERROS[params.erro] : undefined;
   const aviso = typeof params.aviso === "string" ? AVISOS[params.aviso] : undefined;
 
-  const { data: conexao } = await supabase.from("conexoes").select("dados, conectado_em")
-    .eq("workspace_id", workspace.id).eq("provedor", "google_presenca").maybeSingle();
-  const autorizada = Boolean((conexao?.dados as { tem_autorizacao?: boolean } | undefined)?.tem_autorizacao);
+  const { data: conexoes } = await supabase.from("conexoes").select("provedor, dados, conectado_em")
+    .eq("workspace_id", workspace.id).in("provedor", ["google_presenca", "windsor"]);
+  const conexao = conexoes?.find((c) => c.provedor === "google_presenca");
+  const windsor = conexoes?.find((c) => c.provedor === "windsor");
+  // O dono pode escolher ler a Presença pela Windsor (só leitura); publicar continua pela conexão própria.
+  const pelaWindsor = Boolean(windsor?.conectado_em) && fonteDaPlataforma(windsor?.dados, "presenca") === "windsor";
+  const autorizadaNoGoogle = Boolean((conexao?.dados as { tem_autorizacao?: boolean } | undefined)?.tem_autorizacao);
+  const autorizada = autorizadaNoGoogle || pelaWindsor;
 
   const cabecalho = (
     <header>
@@ -103,7 +109,14 @@ export default async function PresencaPage(props: PageProps<"/painel/[workspaceI
       <p className="text-sm text-zinc-500">Perfil da Empresa no Google (antigo Google Meu Negócio) e resultados da busca (Search Console).</p>
     </header>
   );
-  const alertaApi = (
+  const alertaApi = pelaWindsor ? (
+    <p className="rounded-xl border border-sky-500/40 bg-sky-500/10 p-4 text-sm text-sky-100">
+      <strong>Dados pela Windsor.ai</strong> (só leitura). Responder avaliações e publicar posts continua pela conexão própria do Google,
+      {" "}sempre depois da aprovação do dono{autorizadaNoGoogle ? "." : ": para publicar por aqui, conecte também o Google em "}
+      {!autorizadaNoGoogle && <Link href={`/painel/${workspace.id}/conexoes`} className="underline">Conexões</Link>}
+      {!autorizadaNoGoogle && "."} A primeira leitura pela Windsor pode demorar alguns minutos.
+    </p>
+  ) : (
     <p className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100">
       <strong>Importante:</strong> o Google só libera a Business Profile API (avaliações, informações e posts do perfil) depois de um
       {" "}<strong>pedido de acesso</strong> para o projeto do Google Cloud, e a análise pode levar dias ou semanas. Enquanto isso, a parte
@@ -139,7 +152,7 @@ export default async function PresencaPage(props: PageProps<"/painel/[workspaceI
   let sitesGsc: string[] = [];
   let falhaLocais: string | null = null;
   let falhaSites: string | null = null;
-  if (dono && lido.ok) {
+  if (dono && lido.ok && lido.presenca.fonte === "google") {
     try { locais = await listarLocais(lido.presenca.acesso.token); } catch (e) { falhaLocais = e instanceof Error ? e.message : "falha"; }
     try { sitesGsc = await listarSitesGsc(lido.presenca.acesso.token); } catch (e) { falhaSites = e instanceof Error ? e.message : "falha"; }
   }
@@ -162,7 +175,13 @@ export default async function PresencaPage(props: PageProps<"/painel/[workspaceI
         </p>
       )}
 
-      {dono && lido.ok && (
+      {dono && p?.fonte === "windsor" && (
+        <p className={cartao + " text-sm text-zinc-400"}>
+          O perfil e o site lidos pela Windsor são escolhidos em{" "}
+          <Link href={`/painel/${workspace.id}/conexoes`} className="text-amber-300 underline">Conexões</Link>, na seção Windsor.ai.
+        </p>
+      )}
+      {dono && lido.ok && p?.fonte === "google" && (
         <details className={cartao} open={!p?.acesso.local && !p?.acesso.siteGsc}>
           <summary className="cursor-pointer text-sm font-medium">Configuração: qual perfil e qual site são deste workspace</summary>
           <form action={salvarEscolha} className="mt-3 grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
@@ -241,7 +260,7 @@ export default async function PresencaPage(props: PageProps<"/painel/[workspaceI
                   {a.comentario && <p className="text-zinc-400">{a.comentario}</p>}
                   {a.resposta ? (
                     <p className="rounded-lg bg-zinc-950 p-2 text-zinc-400"><span className="text-zinc-500">Sua resposta: </span>{a.resposta}</p>
-                  ) : gestor && !erroTabela && (
+                  ) : gestor && !erroTabela && p.fonte === "google" && (
                     <details>
                       <summary className="cursor-pointer text-xs text-amber-300">Escrever resposta (vai para aprovação)</summary>
                       <form action={proporAcao} className="mt-2 space-y-2">

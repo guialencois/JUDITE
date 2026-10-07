@@ -7,27 +7,12 @@ import { exigirDono } from "@/lib/conexoes/acesso";
 import { appMeta, mccPadraoGoogle } from "@/lib/conexoes/app";
 import { escolherEntre, revogarNaPlataforma } from "@/lib/conexoes/plataformas";
 import { comTracos, META_GRAPH_URL, META_VERSAO, soDigitos, TIKTOK_API_URL } from "@/lib/conexoes/config";
+import { registrarConta } from "@/lib/conexoes/contas";
 import { gravarConexao, lerConexao } from "@/lib/conexoes/segredos";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 const wsSchema = z.uuid();
 const pagina = (ws: string, sufixo: string) => `/painel/${ws}/conexoes?${sufixo}`;
-type Admin = ReturnType<typeof createAdminClient>;
-
-/** Liga a conta de anúncios ao workspace, sem deixar um workspace "tomar" a conta de outro. */
-async function registrarConta(db: Admin, workspaceId: string, plataforma: "google_ads" | "facebook" | "tiktok", conta: string, nome: string | null) {
-  await db.from("trafego_contas").upsert(
-    { workspace_id: workspaceId, plataforma, conta_externa: conta, nome, ativo: true },
-    { onConflict: "plataforma,conta_externa", ignoreDuplicates: true },
-  );
-  const { data } = await db
-    .from("trafego_contas")
-    .select("workspace_id")
-    .eq("plataforma", plataforma)
-    .eq("conta_externa", conta)
-    .maybeSingle();
-  return data?.workspace_id === workspaceId;
-}
 
 const googleSchema = z.object({
   workspaceId: wsSchema,
@@ -248,7 +233,7 @@ export async function escolherConta(formData: FormData) {
 
 /** Desconectar: revoga o acesso na própria plataforma (quando dá) e apaga os tokens criptografados. Só o dono. */
 export async function desconectar(formData: FormData) {
-  const parsed = z.object({ workspaceId: wsSchema, provedor: z.enum(["google_ads", "meta", "tiktok", "google_presenca"]) }).safeParse({
+  const parsed = z.object({ workspaceId: wsSchema, provedor: z.enum(["google_ads", "meta", "tiktok", "google_presenca", "windsor"]) }).safeParse({
     workspaceId: formData.get("workspaceId"),
     provedor: formData.get("provedor"),
   });
@@ -261,6 +246,12 @@ export async function desconectar(formData: FormData) {
   const conexao = await lerConexao(db, workspaceId, provedor).catch(() => null);
   const outroGoogle = provedor === "google_ads" ? "google_presenca" : provedor === "google_presenca" ? "google_ads" : null;
   const outra = outroGoogle ? await lerConexao(db, workspaceId, outroGoogle).catch(() => null) : null;
+  // A chave da Windsor não é revogável por API: ela só é apagada daqui (o dono pode trocá-la no site da Windsor).
+  if (provedor === "windsor") {
+    await db.from("conexoes").delete().eq("workspace_id", workspaceId).eq("provedor", provedor);
+    revalidatePath(`/painel/${workspaceId}/conexoes`);
+    redirect(pagina(workspaceId, "aviso=windsor-apagada"));
+  }
   const revogacao = conexao
     ? await revogarNaPlataforma({
       provedor, segredos: conexao.segredos, dados: conexao.dados, segredoDoAppMeta: appMeta()?.segredo ?? null,

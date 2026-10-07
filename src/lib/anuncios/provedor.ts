@@ -2,9 +2,10 @@
  * A "porta" entre a JUDITE e as plataformas de anúncio.
  *
  * As telas e as rotas só conhecem esta interface. Cada plataforma tem o seu provedor
- * nativo (API oficial, sem intermediário pago), escolhido por workspace conforme a
- * conexão salva na página Conexões. Quando o LUNIKO assumir a execução, basta criar
- * outro provedor com os mesmos métodos: telas, freios de orçamento e histórico continuam iguais.
+ * nativo (API oficial, por OAuth), que é o padrão. O dono do workspace pode trocar, plataforma
+ * por plataforma, para a Windsor.ai (com a chave de API da própria empresa) na página Conexões.
+ * Quando o LUNIKO assumir a execução, basta criar outro provedor com os mesmos métodos:
+ * telas, freios de orçamento e histórico continuam iguais.
  *
  * Roda SOMENTE no servidor.
  */
@@ -16,7 +17,9 @@ import type { createAdminClient } from "@/lib/supabase/admin";
 import { NOME_PLATAFORMA, type AcaoAnuncio, type LinhaCampanha, type LinhaMetrica, type Plataforma } from "@/lib/trafego/tipos";
 import { provedorGoogle } from "./google";
 import { provedorMeta } from "./meta";
+import { contasEscolhidas, fonteDaPlataforma } from "@/lib/windsor/conexao";
 import { provedorTikTok } from "./tiktok";
+import { provedorWindsor } from "./windsor";
 
 type Admin = ReturnType<typeof createAdminClient>;
 
@@ -58,6 +61,22 @@ export type Resolucao = { ok: true; provedor: ProvedorAnuncios } | { ok: false; 
  */
 export async function provedorDoWorkspace(db: Admin, workspaceId: string, plataforma: Plataforma): Promise<Resolucao> {
   const nome = NOME_PLATAFORMA[plataforma];
+
+  // O dono escolheu a Windsor para esta plataforma? Então leitura e ações vão por ela, sem cair
+  // escondido na conexão própria: se faltar algo, a tela mostra o que falta.
+  let windsor: Awaited<ReturnType<typeof lerConexao>>;
+  try {
+    windsor = await lerConexao(db, workspaceId, "windsor");
+  } catch {
+    return { ok: false, motivo: "Não foi possível abrir a chave da Windsor. Salve a chave de novo na página Conexões." };
+  }
+  if (fonteDaPlataforma(windsor.dados, plataforma) === "windsor") {
+    if (!windsor.segredos.api_key) return { ok: false, motivo: `${nome} está configurado para usar a Windsor, mas a chave não está salva. Salve a chave em Conexões.` };
+    const contas = contasEscolhidas(windsor.dados, plataforma);
+    if (!contas.length) return { ok: false, motivo: `Escolha em Conexões quais contas de ${nome} da Windsor a JUDITE deve usar.` };
+    return { ok: true, provedor: provedorWindsor({ chave: windsor.segredos.api_key, plataforma, contas }) };
+  }
+
   let conexao: Awaited<ReturnType<typeof lerConexao>>;
   try {
     conexao = await lerConexao(db, workspaceId, CONEXAO_DA_PLATAFORMA[plataforma]);

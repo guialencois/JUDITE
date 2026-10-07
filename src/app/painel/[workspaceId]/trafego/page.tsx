@@ -5,6 +5,7 @@
 
 import Link from "next/link";
 import { AvisoConexoes } from "@/components/trafego/AvisoConexoes";
+import { FonteDosDados } from "@/components/trafego/FonteDosDados";
 import { BotaoSincronizar } from "@/components/trafego/BotaoSincronizar";
 import { CartaoKpi } from "@/components/trafego/CartaoKpi";
 import { Funil } from "@/components/trafego/Funil";
@@ -13,7 +14,7 @@ import { TopAnuncios } from "@/components/trafego/TopAnuncios";
 import {
   agruparPorAnuncio, brl, derivar, funil, multiplicador, percent, porDia, somar, variacao,
 } from "@/lib/trafego/metricas";
-import { plataformasSemConexao } from "@/lib/conexoes/status";
+import { situacaoDasConexoes } from "@/lib/conexoes/status";
 import { dia, metricaDoBanco, NOME_PLATAFORMA, PLATAFORMAS, type LinhaMetrica, type Plataforma } from "@/lib/trafego/tipos";
 import { carregarWorkspace } from "../carregar";
 
@@ -45,7 +46,7 @@ export default async function PaginaTrafego(props: PageProps<"/painel/[workspace
   ]);
 
   const custos = Number(cfg?.valor ?? 25);
-  const semConexao = await plataformasSemConexao(supabase, workspace.id);
+  const { semConexao, fontes } = await situacaoDasConexoes(supabase, workspace.id);
   const filtrar = (linhas: LinhaMetrica[]) =>
     plataforma === "todas" ? linhas : linhas.filter((l) => l.plataforma === plataforma);
 
@@ -94,6 +95,7 @@ export default async function PaginaTrafego(props: PageProps<"/painel/[workspace
       </header>
 
       <AvisoConexoes workspaceId={workspace.id} faltando={semConexao} total={PLATAFORMAS.length} />
+      <FonteDosDados workspaceId={workspace.id} fontes={fontes} />
 
       <nav className="mb-3 flex flex-wrap gap-2" aria-label="Filtrar por plataforma">
         {PLATAFORMAS_FILTRO.map((p) => (
