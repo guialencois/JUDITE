@@ -1,5 +1,5 @@
 -- Windsor.ai como conexão opcional por workspace (chave de API da própria empresa).
--- NÃO APLICADA. O Jackson revisa e aplica (ver docs/PENDENTE.md).
+-- APLICADA no banco JUDITE em 07/10/2026, a pedido do Jackson. Guardada aqui como registro.
 -- Só amplia a lista de provedores aceitos na tabela conexoes; não apaga nem altera nenhum dado.
 --
 -- A chave fica na coluna "segredo", criptografada pelo servidor (AES-256-GCM), como os outros tokens.

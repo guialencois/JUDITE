@@ -23,7 +23,7 @@
 
 ## Migrações
 
-> **Situação em 07/10/2026:** as migrações nº 1 a 9 estão aplicadas no banco JUDITE. **Falta aplicar a nº 10** (Windsor), criada em 07/10/2026. Sem ela o resto do sistema funciona igual; só não dá para salvar a chave da Windsor (a tela avisa).
+> **Situação em 07/10/2026:** as 10 migrações da tabela abaixo estão aplicadas no banco JUDITE (a nº 10, da Windsor, pelo Claude Code em 07/10/2026, a pedido do Jackson). Não há migração pendente.
 
 Aplicar **nesta ordem**. Onde: site do **Supabase** → projeto JUDITE → **SQL Editor** → **New query** →
 copiar o conteúdo do arquivo (pasta `supabase/migrations`), colar e clicar em **Run**. Uma de cada vez.
@@ -40,7 +40,7 @@ Peça ao Claude no chat para revisar cada arquivo antes, se quiser.
 | 7 | `20261004070000_etapa10_autonomia.sql` | Tabela `autonomia` (chave ligada/desligada por workspace; nasce desligada). |
 | 8 | `20261005010000_diretor_trafego_aprovacoes.sql` | Permite marcar uma ação da autonomia como `aprovada` ou `dispensada` na página **Diretor de Tráfego**. Só amplia uma lista de valores. Sem ela, a página funciona, mas os botões Aprovar/Dispensar dessas ações avisam que falta a migração. |
 | 9 | `20261005020000_cmo_autonoma.sql` | CMO autônoma: guarda o plano completo de cada campanha, os novos estados (aprendizado, otimização, pausada pela JUDITE, concluída...), o histórico de cada mudança (`campanha_eventos`), as ideias (`campanha_ideias`), o registro do ciclo diário (`cmo_execucoes`), o nível de autonomia e os limites por canal. **Precisa das nº 2, 5, 6 e 7 antes.** Só acrescenta; não apaga nada. |
-| 10 | `20261007010000_windsor_conexao.sql` | **PENDENTE.** Aceita `windsor` como tipo de conexão na tabela `conexoes` (a chave de API fica criptografada, como os outros tokens). Só amplia uma lista de valores. **Precisa da nº 4 antes** (já aplicada). |
+| 10 | `20261007010000_windsor_conexao.sql` | Aceita `windsor` como tipo de conexão na tabela `conexoes` (a chave de API fica criptografada, como os outros tokens). Só amplia uma lista de valores. **Precisa da nº 4 antes** (já aplicada). |
 
 Observações:
 - Todas as tabelas novas têm `workspace_id` e RLS ligado: membros leem; escrita só pelo servidor ou por dono/admin.
@@ -75,8 +75,7 @@ e, para o seu computador, no arquivo `.env.local`. Depois de mudar na Vercel, fa
 A Windsor é uma alternativa às conexões próprias (OAuth). O padrão continua sendo a conexão própria; só muda se o dono trocar.
 
 **Passo a passo para pegar a chave e ligar:**
-1. Aplique a migração nº 10 (site do **Supabase** → projeto JUDITE → **SQL Editor** → **New query** → cole o conteúdo de
-   `supabase/migrations/20261007010000_windsor_conexao.sql` → **Run**).
+1. A migração nº 10 já está aplicada (07/10/2026). Não precisa fazer nada no Supabase.
 2. No navegador, entre em `https://onboard.windsor.ai` com a conta da Windsor da empresa.
 3. Na lista de fontes de dados, ligue as contas que a JUDITE vai usar: **Google Ads**, **Facebook Ads**, **TikTok Ads** e, se
    quiser, **Google My Business** e **Google Search Console**. Em cada uma, faça o login e **marque a conta** (só logar não basta).
