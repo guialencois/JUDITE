@@ -10,9 +10,11 @@ Ela planeja, cria, publica, mede e otimiza campanhas **reais**, com autonomia pr
 sempre dentro das políticas de orçamento e governança de cada workspace.
 
 - **O humano** só ajusta preço e aprova/reprova o que estiver acima dos limites.
-- **Sem Windsor ou qualquer intermediário pago.** Toda integração é feita pelas APIs oficiais
-  (Meta Marketing API, Google Ads API, TikTok Marketing API, Google Business Profile API,
-  Google Search Console). O Windsor foi removido em 04/10/2026 (branch `desenvolvimento`).
+- **O padrão é a conexão própria, pelas APIs oficiais** (Meta Marketing API, Google Ads API,
+  TikTok Marketing API, Google Business Profile API, Google Search Console), sem intermediário pago.
+  O Windsor global foi removido em 04/10/2026. Em 07/10/2026 a Windsor.ai voltou só como **opção
+  por workspace**: o dono cola a chave da própria empresa em Conexões e escolhe, plataforma por
+  plataforma, entre "Conexão própria (OAuth)" e "Windsor". Não existe variável global `WINDSOR_API_KEY`.
 - **LUNIKO** é o motor de execução separado (outro repositório e outro banco). A integração é
   feita só por API/webhooks assinados. Nunca fundir os projetos.
 
