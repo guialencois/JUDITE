@@ -447,6 +447,7 @@ campanha, anúncios, público e orçamento, pôr na fila de aprovação e, com a
   Pesquisa ou Display sem relação com o objetivo do rascunho, então ficou de fora, como no provedor nativo.
 - TikTok pela Windsor aceita só orçamento inteiro: a JUDITE recusa valor com centavos em vez de arredondar o que foi aprovado.
 - Sem variável global: a chave é de cada workspace, criptografada com `src/lib/cripto.ts`. Só o dono salva, testa ou apaga.
-- `docs/VISAO.md` atualizado: a regra "sem Windsor" virou "padrão é a conexão própria; Windsor é opção por workspace".
+- `docs/VISAO.md` ficou com o texto original ("Sem Windsor ou qualquer intermediário pago"), a pedido do Jackson: a mudança
+  que eu tinha feito nesse arquivo foi revertida. A Windsor existe no código só como opção por workspace, desligada por padrão.
 
 **Limitação:** nada foi testado com uma chave real da Windsor. Roteiro no item 6b de `docs/PENDENTE.md`.
