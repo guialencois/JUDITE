@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { situacaoDe } from "@/lib/conexoes/status";
+import { conexoesProntas, situacaoDe } from "@/lib/conexoes/status";
 import { cifrar } from "@/lib/cripto";
 import { avaliacoesDaWindsor, buscaDaWindsor, desempenhoDaWindsor } from "@/lib/presenca/windsor";
 import type { createAdminClient } from "@/lib/supabase/admin";
@@ -296,6 +296,14 @@ describe("escolha do provedor por workspace", () => {
     expect(s.fontes).toEqual({ google_ads: "propria", facebook: "windsor", tiktok: "windsor" });
     // TikTok está na Windsor mas sem conta marcada: continua aparecendo como "falta conectar".
     expect(s.semConexao.map((f) => f.nome)).toEqual(["TikTok Ads"]);
+  });
+
+  it("Diretor e geração de campanhas enxergam a plataforma ligada só pela Windsor", () => {
+    const soWindsor = [{ provedor: "windsor", conectado_em: "2026-10-07T00:00:00Z", dados: windsor({ facebook: "windsor" }).dados }];
+    expect(conexoesProntas(soWindsor)).toEqual(["meta"]);
+    // Chave salva, mas o dono não trocou a fonte: nada conta como conectado.
+    expect(conexoesProntas([{ provedor: "windsor", conectado_em: "2026-10-07T00:00:00Z", dados: windsor({}).dados }])).toEqual([]);
+    expect(conexoesProntas([{ provedor: "google_ads", conectado_em: "2026-10-01T00:00:00Z" }, ...soWindsor])).toEqual(["google_ads", "meta"]);
   });
 });
 

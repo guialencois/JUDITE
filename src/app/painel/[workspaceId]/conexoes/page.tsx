@@ -531,6 +531,19 @@ export default async function ConexoesPage(props: PageProps<"/painel/[workspaceI
         )}
       </section>
 
+      {/* ------------------------------------------------------------ PRÓXIMO PASSO */}
+      <section className={cartao}>
+        <h2 className="text-xl font-medium">Depois de conectar: gerar campanhas com a IA</h2>
+        <p className="text-sm text-zinc-400">
+          Com uma plataforma conectada (pela conexão própria ou pela Windsor), a JUDITE monta campanhas sozinha, acompanha os números
+          todo dia e ajusta dentro dos Limites da IA. Campanha nova nasce pausada e só liga depois da aprovação do dono.
+        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <a href={`/painel/${ws}/diretor-trafego`} className={botao}>Gerar campanha</a>
+          <a href={`/painel/${ws}/trafego`} className={botaoNeutro}>Sincronizar dados</a>
+        </div>
+      </section>
+
       {/* ------------------------------------------------------------ ADMINISTRADOR */}
       {dono && (
         <section className={cartao + " border-zinc-700"}>

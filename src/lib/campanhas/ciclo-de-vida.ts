@@ -7,6 +7,7 @@
 
 import { ehEstado, mudarEstado, RODANDO, type Estado } from "@/lib/cmo/estados";
 import { registrarEvento, repositorioDeEstados } from "@/lib/cmo/estados-db";
+import { conexoesProntas } from "@/lib/conexoes/status";
 import type { createAdminClient } from "@/lib/supabase/admin";
 import { executarAcao } from "@/lib/trafego/executar";
 import { lerLimites, situacaoDoMes } from "@/lib/trafego/mes";
@@ -68,7 +69,7 @@ export async function editarProposta(
 
   const [{ data: cfg }, { data: conexoes }] = await Promise.all([
     db.from("trafego_config").select("chave, valor").eq("workspace_id", workspaceId),
-    db.from("conexoes").select("provedor, conectado_em").eq("workspace_id", workspaceId),
+    db.from("conexoes").select("provedor, dados, conectado_em").eq("workspace_id", workspaceId),
   ]);
   const limites = lerLimites(cfg);
   const teto = limites.mensalPorCanal[lido.data.plataforma as Plataforma];
@@ -76,7 +77,7 @@ export async function editarProposta(
     maxSemAprovacao: limites.maxSemAprovacao,
     mes: await situacaoDoMes(db, workspaceId, limites.mensalMax),
     canal: teto > 0 ? await situacaoDoMes(db, workspaceId, teto, undefined, lido.data.plataforma) : null,
-    plataformasConectadas: (conexoes ?? []).filter((c) => c.conectado_em).map((c) => c.provedor as string),
+    plataformasConectadas: conexoesProntas(conexoes ?? []),
     criativosValidos: lido.data.criativo_ids,
   });
   if (conferido.erro) return { ok: false, motivo: conferido.erro };

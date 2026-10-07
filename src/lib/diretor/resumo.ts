@@ -8,7 +8,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { progressoDasMetas, resumir, agruparVendas, type MetricaMeta, type Venda } from "@/lib/comercial/contas";
-import { CONEXAO_DA_PLATAFORMA } from "@/lib/conexoes/status";
+import { CONEXAO_DA_PLATAFORMA, conexoesProntas } from "@/lib/conexoes/status";
 import { agrupar, canal, ehTeste, totais as totaisDoSite, type EventoSite } from "@/lib/site/resumo";
 import { diasRestantesNoMes, hojeEmBrasilia, lerLimites, limitesDoMes } from "@/lib/trafego/mes";
 import { campanhaAtiva, metricaDoBanco, NOME_PLATAFORMA, PLATAFORMAS, type LinhaMetrica, type Plataforma } from "@/lib/trafego/tipos";
@@ -143,7 +143,7 @@ export async function carregarResumo(db: SupabaseClient, workspaceId: string): P
   const [metricas, campanhas, conexoes, sites, vendas, metas, config, gastos] = await Promise.all([
     db.from("trafego_metricas_dia").select("*").eq("workspace_id", workspaceId).gte("data", desde).lte("data", hoje).limit(50000),
     db.from("trafego_campanhas").select("plataforma, campanha_id, nome, status, orcamento_diario").eq("workspace_id", workspaceId),
-    db.from("conexoes").select("provedor, conectado_em").eq("workspace_id", workspaceId),
+    db.from("conexoes").select("provedor, dados, conectado_em").eq("workspace_id", workspaceId),
     db.from("sites").select("id, dominio").eq("workspace_id", workspaceId).order("criado_em").limit(1),
     db.from("trafego_vendas").select("id, data, produto, pessoas, valor, origem, campanha_id, observacao")
       .eq("workspace_id", workspaceId).gte("data", inicioMes).lte("data", hoje).limit(5000),
@@ -167,7 +167,7 @@ export async function carregarResumo(db: SupabaseClient, workspaceId: string): P
       status: (c.status as string | null) ?? null,
       orcamento_diario: c.orcamento_diario === null || c.orcamento_diario === undefined ? null : Number(c.orcamento_diario),
     })),
-    conexoesProntas: (conexoes.data ?? []).filter((c) => c.conectado_em).map((c) => c.provedor as string),
+    conexoesProntas: conexoesProntas(conexoes.data ?? []),
     site: site ? { dominio: site.dominio as string } : null,
     eventosSite: (eventos.data ?? []) as EventoSite[],
     vendasDoMes: (vendas.data ?? []).map((v) => ({

@@ -39,6 +39,15 @@ export function situacaoDe(linhas: { provedor: string; dados?: unknown; conectad
 }
 
 /**
+ * Nomes das conexões (google_ads, meta, tiktok) que estão prontas para uso, venha o acesso da conexão própria
+ * ou da Windsor. É o que o Diretor e a geração de campanhas usam para saber em quais plataformas podem trabalhar.
+ */
+export function conexoesProntas(linhas: { provedor: string; dados?: unknown; conectado_em?: string | null }[]): string[] {
+  const faltando = new Set(situacaoDe(linhas).semConexao.map((f) => f.nome));
+  return PLATAFORMAS.filter((p) => !faltando.has(NOME_PLATAFORMA[p])).map((p) => CONEXAO_DA_PLATAFORMA[p]);
+}
+
+/**
  * Situação das conexões de anúncio do workspace. Lê com a sessão do usuário (RLS): só status, nunca os segredos.
  */
 export async function situacaoDasConexoes(supabase: Sessao, workspaceId: string): Promise<SituacaoDasConexoes> {

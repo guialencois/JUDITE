@@ -7,6 +7,7 @@
  */
 
 import { registrarEvento } from "@/lib/cmo/estados-db";
+import { conexoesProntas } from "@/lib/conexoes/status";
 import type { createAdminClient } from "@/lib/supabase/admin";
 import { lerLimites, situacaoDoMes } from "@/lib/trafego/mes";
 import { NOME_PLATAFORMA, type Plataforma } from "@/lib/trafego/tipos";
@@ -26,7 +27,7 @@ export async function gravarRascunho(
 ): Promise<Gravado> {
   const [{ data: cfg }, { data: conexoes }, { data: criativos }] = await Promise.all([
     db.from("trafego_config").select("chave, valor").eq("workspace_id", ws),
-    db.from("conexoes").select("provedor, conectado_em").eq("workspace_id", ws),
+    db.from("conexoes").select("provedor, dados, conectado_em").eq("workspace_id", ws),
     db.from("criativos").select("id").eq("workspace_id", ws).neq("status", "arquivado"),
   ]);
   const limites = lerLimites(cfg);
@@ -39,7 +40,7 @@ export async function gravarRascunho(
     maxSemAprovacao: limites.maxSemAprovacao,
     mes: await situacaoDoMes(db, ws, limites.mensalMax),
     canal: tetoDoCanal > 0 ? await situacaoDoMes(db, ws, tetoDoCanal, undefined, r.plataforma) : null,
-    plataformasConectadas: (conexoes ?? []).filter((c) => c.conectado_em).map((c) => c.provedor as string),
+    plataformasConectadas: conexoesProntas(conexoes ?? []),
     criativosValidos: (criativos ?? []).map((c) => c.id as string),
   });
   if (conferido.erro) return { erro: conferido.erro };
