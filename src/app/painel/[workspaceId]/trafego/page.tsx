@@ -4,6 +4,8 @@
  */
 
 import Link from "next/link";
+import { AvisoConexoes } from "@/components/trafego/AvisoConexoes";
+import { FonteDosDados } from "@/components/trafego/FonteDosDados";
 import { BotaoSincronizar } from "@/components/trafego/BotaoSincronizar";
 import { CartaoKpi } from "@/components/trafego/CartaoKpi";
 import { Funil } from "@/components/trafego/Funil";
@@ -12,13 +14,14 @@ import { TopAnuncios } from "@/components/trafego/TopAnuncios";
 import {
   agruparPorAnuncio, brl, derivar, funil, multiplicador, percent, porDia, somar, variacao,
 } from "@/lib/trafego/metricas";
-import { dia, metricaDoBanco, type LinhaMetrica } from "@/lib/trafego/tipos";
+import { situacaoDasConexoes } from "@/lib/conexoes/status";
+import { dia, metricaDoBanco, NOME_PLATAFORMA, PLATAFORMAS, type LinhaMetrica, type Plataforma } from "@/lib/trafego/tipos";
 import { carregarWorkspace } from "../carregar";
 
 export const dynamic = "force-dynamic";
 
 const PERIODOS = [7, 14, 30, 60];
-const PLATAFORMAS_FILTRO = ["todas", "google_ads", "facebook"];
+const PLATAFORMAS_FILTRO = ["todas", ...PLATAFORMAS];
 
 export default async function PaginaTrafego(props: PageProps<"/painel/[workspaceId]/trafego">) {
   const { workspaceId } = await props.params;
@@ -43,6 +46,7 @@ export default async function PaginaTrafego(props: PageProps<"/painel/[workspace
   ]);
 
   const custos = Number(cfg?.valor ?? 25);
+  const { semConexao, fontes } = await situacaoDasConexoes(supabase, workspace.id);
   const filtrar = (linhas: LinhaMetrica[]) =>
     plataforma === "todas" ? linhas : linhas.filter((l) => l.plataforma === plataforma);
 
@@ -89,6 +93,21 @@ export default async function PaginaTrafego(props: PageProps<"/painel/[workspace
           <BotaoSincronizar workspaceId={workspace.id} ultimaSync={syncs?.[0]?.terminado_em ?? null} />
         </div>
       </header>
+
+      <AvisoConexoes workspaceId={workspace.id} faltando={semConexao} total={PLATAFORMAS.length} />
+      <FonteDosDados workspaceId={workspace.id} fontes={fontes} />
+
+      <nav className="mb-3 flex flex-wrap gap-2" aria-label="Filtrar por plataforma">
+        {PLATAFORMAS_FILTRO.map((p) => (
+          <Link
+            key={p}
+            href={{ pathname: caminho, query: { plataforma: p, dias } }}
+            className={"rounded-lg border px-2.5 py-1 text-xs " + (p === plataforma ? "border-amber-400 text-amber-400" : "border-zinc-700 text-zinc-400")}
+          >
+            {p === "todas" ? "Todas as plataformas" : NOME_PLATAFORMA[p as Plataforma]}
+          </Link>
+        ))}
+      </nav>
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {kpis.map((k) => <CartaoKpi key={k.rotulo} {...k} />)}

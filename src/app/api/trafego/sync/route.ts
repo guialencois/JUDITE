@@ -1,14 +1,15 @@
 /**
- * Sincronização: lê as plataformas (pelo provedor de anúncios) e grava no Supabase.
+ * Sincronização: lê as plataformas (pelo provedor nativo de cada uma) e grava no Supabase.
+ * O provedor é escolhido por workspace, conforme a conexão salva na página Conexões.
  *
- *   GET  -> cron da Vercel, de hora em hora: sincroniza todos os workspaces.
+ *   GET  -> cron da Vercel, uma vez por dia: sincroniza todos os workspaces.
  *   POST -> botão "Sincronizar dados": sincroniza só o workspace do usuário logado.
  *           Corpo: { "workspaceId": "...", "dias": 60 }
  */
 
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { provedorAtual } from "@/lib/anuncios/provedor";
+import { provedorDoWorkspace } from "@/lib/anuncios/provedor";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { papelNoWorkspace } from "@/lib/trafego/acesso";
 import { ehChamadaDoCron } from "@/lib/trafego/segredo";
@@ -31,7 +32,6 @@ type Admin = ReturnType<typeof createAdminClient>;
 async function sincronizarWorkspace(db: Admin, workspaceId: string, dias: number) {
   const de = dia(-dias);
   const ate = dia(-1);
-  const provedor = provedorAtual();
   const resumo: Record<string, unknown>[] = [];
 
   const { data: contas } = await db
@@ -52,6 +52,9 @@ async function sincronizarWorkspace(db: Admin, workspaceId: string, dias: number
 
     try {
       const agora = new Date().toISOString();
+      const resolvido = await provedorDoWorkspace(db, workspaceId, plataforma);
+      if (!resolvido.ok) throw new Error(resolvido.motivo);
+      const provedor = resolvido.provedor;
       const metricas = await provedor.lerMetricas({ plataforma, contas: ids, de, ate });
       const linhas = metricas.map((l) => ({
         workspace_id: workspaceId,

@@ -13,9 +13,15 @@ export default async function WorkspaceLayout(props: LayoutProps<"/painel/[works
           <Link href="/painel" className="text-zinc-500 hover:text-zinc-300">JUDITE</Link>
           <span className="font-medium text-zinc-100">{workspace.name}</span>
           <Link href={base} className="text-zinc-400 hover:text-amber-400">Visão geral</Link>
+          <Link href={`${base}/diretor-trafego`} className="text-zinc-400 hover:text-amber-400">Diretor de Tráfego</Link>
+          <Link href={`${base}/diretor`} className="text-zinc-400 hover:text-amber-400">Diretor</Link>
           <Link href={`${base}/trafego`} className="text-zinc-400 hover:text-amber-400">Tráfego</Link>
           <Link href={`${base}/trafego/gerenciador`} className="text-zinc-400 hover:text-amber-400">Gerenciador</Link>
           <Link href={`${base}/site`} className="text-zinc-400 hover:text-amber-400">Site</Link>
+          <Link href={`${base}/comercial`} className="text-zinc-400 hover:text-amber-400">Comercial</Link>
+          <Link href={`${base}/presenca`} className="text-zinc-400 hover:text-amber-400">Presença no Google</Link>
+          <Link href={`${base}/criativos`} className="text-zinc-400 hover:text-amber-400">Creative Studio</Link>
+          <Link href={`${base}/campanhas`} className="text-zinc-400 hover:text-amber-400">Campanhas</Link>
           <Link href={`${base}/conexoes`} className="text-zinc-400 hover:text-amber-400">Conexões</Link>
         </div>
       </nav>

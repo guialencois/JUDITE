@@ -1,20 +1,25 @@
 /**
  * Tipos do painel de tráfego, independentes de quem fornece os dados.
- * Hoje quem fornece é o Windsor (temporário); depois será o LUNIKO.
+ * Quem fornece são os provedores nativos de src/lib/anuncios (APIs oficiais).
  *
  * Regra do painel inteiro:
  *   null = a plataforma NÃO informa essa métrica (ex.: page view no Google Ads)
  *   0    = a plataforma informa e o valor é zero
  */
 
-export type Plataforma = "google_ads" | "facebook";
+export type Plataforma = "google_ads" | "facebook" | "tiktok";
 
-export const PLATAFORMAS: Plataforma[] = ["google_ads", "facebook"];
+export const PLATAFORMAS: Plataforma[] = ["google_ads", "facebook", "tiktok"];
 
 export const NOME_PLATAFORMA: Record<Plataforma, string> = {
   google_ads: "Google Ads",
   facebook: "Meta Ads",
+  tiktok: "TikTok Ads",
 };
+
+/** Cada plataforma chama "ligada" de um jeito: Google ENABLED, Meta ACTIVE, TikTok ENABLE. */
+export const campanhaAtiva = (status: string | null | undefined): boolean =>
+  ["ENABLED", "ACTIVE", "ENABLE"].includes((status ?? "").toUpperCase());
 
 export type LinhaMetrica = {
   data: string;
