@@ -1,0 +1,452 @@
+# Progresso do modo autônomo
+
+Diário do Claude Code. Cada etapa concluída ganha uma entrada: data/hora, o que foi feito,
+arquivos principais, decisões tomadas sozinho e o que o Jackson precisa testar.
+
+## Entradas
+
+### Etapa 1 — Diagnóstico da aba Site (04/10/2026, madrugada)
+
+**O que descobri**
+- O site www.guialencois.org carrega o rastreador certo (`<script defer src="https://judite-pi.vercel.app/j.js" data-chave="9665d30b…">`) e **não tem** cabeçalho de segurança (CSP) que bloqueie o script.
+- O `j.js` publicado responde 200 com o tipo correto; a rota `/api/coleta` responde.
+- Consultei o banco **só para leitura** (um `select` em `sites` e `site_eventos`): o site está cadastrado com a mesma chave e **já existem 8 eventos gravados**, o primeiro às 23h57 de 03/10 (horário de Brasília), todos de Barreirinhas (7 visualizações e 1 clique no WhatsApp).
+- Conclusão: o "0 visitas" era de antes da publicação das 23h57 (a versão do `j.js` no ar tem exatamente esse horário). **A coleta está funcionando.** Não encontrei erro de CORS, de origem (aceita `guialencois.org` e `www.guialencois.org`) nem do proxy.
+
+**O que mudei**
+- `public/j.js`: modo de teste. Abrir `https://www.guialencois.org/?judite_teste=1` envia um evento marcado como teste e mostra uma faixa verde/vermelha no canto do site com o resultado e o motivo.
+- `src/app/api/coleta/route.ts`: no modo de teste a rota responde o motivo (robô, chave errada, domínio errado, banco recusou). Fora do teste continua respondendo 204 sem explicar nada. Erro de gravação agora aparece nos logs da Vercel (antes sumia em silêncio). Cidade com codificação quebrada não derruba mais a coleta. `/index.html` passa a contar como `/`.
+- Aba Site: indicador **"Última visita recebida"** e **"Último teste"**, sempre visíveis.
+- Vitest instalado (`npx vitest run`), com os primeiros testes em `src/lib/site/resumo.test.ts`.
+
+**Decisões tomadas sozinho**
+- O teste é gravado como `tipo = evento` e `nome = judite_teste`, sem coluna nova: assim **não precisa de migração** e funciona já. Esses eventos ficam fora de todas as contas.
+- Mantive o filtro de robôs como estava (não afrouxei).
+- Para instalar o Vitest precisei subir `@types/node` de 20 para 22 (só tipos; não muda o site).
+- Li o banco de produção apenas com `select`. Nada foi escrito nem aplicado.
+
+**Como testar**
+1. Abra `https://www.guialencois.org/?judite_teste=1` (depois que a prévia/produção estiver com este código). Deve aparecer a faixa verde "teste recebido".
+2. Na JUDITE, aba Site: "Última visita recebida" e "Último teste" com data e hora.
+
+### Etapa 2 — Saída do Windsor e provedor nativo da Meta (04/10/2026)
+
+**O que mudei**
+- Apaguei `src/lib/anuncios/windsor.ts`, a variável `WINDSOR_API_KEY` do `.env.example` e os textos sobre "provedor temporário".
+- Novo `src/lib/anuncios/meta.ts` (Marketing API oficial, versão `v26.0`): métricas diárias por campanha e anúncio (`/act_…/insights`), estado e orçamento das campanhas (`/act_…/campaigns`), pausar/ativar e mudar orçamento diário (em centavos).
+- `src/lib/anuncios/provedor.ts`: o provedor agora é escolhido **por workspace** (`provedorDoWorkspace`), lendo a conexão salva em Conexões. Sem conexão, devolve a mensagem "Conecte a Meta em Conexões…".
+- Sincronização (`/api/trafego/sync`) e ações (`/api/trafego/acoes`) usam o provedor de cada plataforma. O status gravado depois de pausar/ativar agora segue o nome de cada plataforma (Meta usa `ACTIVE`, Google usa `ENABLED`).
+- Telas Tráfego e Gerenciador mostram um aviso amarelo com as plataformas ainda não conectadas e um link para Conexões. O botão Sincronizar passa a mostrar o motivo quando uma plataforma falha.
+- Testes em `src/lib/anuncios/meta.test.ts` (conversão de centavos, compra não contada em dobro).
+
+**Decisões tomadas sozinho**
+- Versão da API: testei sem credenciais quais versões respondem (`graph.facebook.com/vNN.0`); a mais nova hoje é a **v26.0**. Fica numa constante só (`META_VERSAO` em `src/lib/conexoes/config.ts`).
+- "Compras" usa o primeiro tipo encontrado entre pixel → purchase → omni_purchase, porque a Meta repete a mesma compra em vários tipos.
+- "Cliques" usa cliques no link (o que leva ao site), não o total de cliques.
+- Campanha da Meta sem orçamento próprio (orçamento nos conjuntos) aparece com orçamento "definir"; tentar mudar pede confirmação e a Meta pode recusar. O erro fica no histórico.
+- Não chamei nenhuma API com token real. O código só foi exercitado pelos testes, com dados de exemplo.
+- A variável `WINDSOR_API_KEY` pode ser apagada da Vercel e do `.env.local` (não é mais lida).
+
+**Como testar**
+1. Sem conexão: abra Tráfego. Deve aparecer o aviso "Meta Ads: conecte a Meta em Conexões…".
+2. Conecte a Meta em Conexões (token do usuário do sistema + ID da conta) e clique em "Sincronizar dados" no Tráfego.
+3. No Gerenciador, as campanhas da Meta devem aparecer com status e orçamento.
+
+### Etapa 3 — Google Ads nativo (04/10/2026)
+
+**O que mudei**
+- Novo `src/lib/anuncios/google.ts` (Google Ads API, REST, versão `v26`): renova o access token com o refresh token salvo, lê métricas diárias por campanha e o estado/orçamento das campanhas com consultas GAQL (`googleAds:search`), pausa/ativa (`campaigns:mutate`) e muda o orçamento diário em micros (`campaignBudgets:mutate`). Envia os cabeçalhos `developer-token` e, quando há conta de administrador, `login-customer-id`.
+- `provedorDoWorkspace` agora atende o Google: se faltar alguma parte da conexão, a mensagem diz exatamente qual (app OAuth, autorização, developer token ou ID do cliente).
+- Página Conexões: aviso de que o Google Ads depende da aprovação do developer token.
+- Testes em `src/lib/anuncios/google.test.ts`.
+
+**Decisões tomadas sozinho**
+- Versão: testei sem credenciais; v22 a v26 respondem. Usei a **v26** (constante `GOOGLE_ADS_VERSAO`).
+- A leitura é **por campanha**, não por anúncio, porque Performance Max e campanhas inteligentes não expõem anúncio. No ranking de anúncios do Dashboard, o Google aparece pelo nome da campanha (o painel já previa isso).
+- Campanha com **orçamento compartilhado** não é alterada pela JUDITE (mudaria outras campanhas junto). A tela mostra o motivo.
+- Erro `DEVELOPER_TOKEN_NOT_APPROVED` vira a frase: "O developer token do Google Ads ainda está em acesso de teste…".
+- Não chamei a API do Google com credenciais reais.
+
+**Como testar**
+1. Com o Google conectado mas o token ainda em teste: Tráfego → Sincronizar dados. Deve aparecer a mensagem sobre o acesso de teste, sem quebrar a tela.
+2. Depois da aprovação: sincronizar e conferir as campanhas no Gerenciador.
+
+### Etapa 4 — TikTok Ads (04/10/2026)
+
+**O que mudei**
+- Novo `src/lib/anuncios/tiktok.ts` (TikTok Marketing API v1.3): relatório diário por anúncio, campanhas (status e orçamento diário), pausar/ativar e mudar orçamento.
+- Conexão em Conexões: passo a passo, formulário do app (App ID e Secret, criptografados), botão "Autorizar no TikTok" (OAuth com `state` em cookie protegido, rotas `/api/conexoes/tiktok/iniciar` e `/callback`) e escolha da conta de anúncios, testada no TikTok antes de salvar.
+- `tiktok` virou a terceira plataforma em todo o painel: tipos, aviso de conexões, filtro por plataforma no Dashboard (novo), nome da plataforma em cada linha do Gerenciador e nas ações.
+- Migração `20261004010000_etapa4_tiktok.sql` (**não aplicada**): amplia os `check` de `trafego_contas`, `trafego_metricas_dia`, `trafego_campanhas` e `conexoes` para aceitar `tiktok`.
+
+**Decisões tomadas sozinho**
+- Pedi ao relatório do TikTok só as métricas de que tenho certeza (gasto, impressões, cliques, conversões, nomes). **Não leio o valor das compras do TikTok** (receita fica 0) para não arriscar um nome de campo errado, que faria o pedido inteiro falhar. O faturamento real vem das vendas registradas na página Comercial (Etapa 5). Está em PENDENTE para conferir com a conta real.
+- Períodos longos são quebrados em janelas de 30 dias (limite do relatório diário do TikTok).
+- Campanha do TikTok com verba total (não diária) aparece sem orçamento diário, para os freios não compararem coisas diferentes.
+- Antes de aplicar a migração, salvar a conexão do TikTok falha com uma mensagem que explica isso. O resto do painel não é afetado.
+- Não chamei a API do TikTok com credenciais reais.
+
+**Como testar**
+1. Aplicar a migração da Etapa 4 (ver PENDENTE).
+2. Conexões → TikTok Ads: seguir o passo a passo. Sem app aprovado pelo TikTok, só dá para ver a tela e salvar as credenciais.
+3. Dashboard de Tráfego: os botões "Todas as plataformas / Google Ads / Meta Ads / TikTok Ads" filtram os números.
+
+### Etapa 5 — Comercial e Budget & ROI (04/10/2026)
+
+**O que mudei**
+- Nova página **Comercial** (`/painel/[workspaceId]/comercial`, link no menu): cartões de faturamento, vendas, ticket médio, gasto em anúncios, **ROAS real** (vendas registradas ÷ gasto) e **CAC**; barra do orçamento mensal; **metas do mês com anéis de progresso**; formulário para **registrar venda do WhatsApp** (data, produto, pessoas, valor, origem, campanha, observação); desempenho por produto e por origem; lista de vendas do mês (dono/admin podem apagar); navegação entre meses.
+- Novo limite **Orçamento mensal máximo** (padrão R$ 2.000) na tela Limites da IA.
+- **Freio mensal** em `src/lib/trafego/limites.ts`: projeta o gasto até o fim do mês (já gasto + orçamentos diários das campanhas ligadas × dias restantes). Aumento de verba ou **ativação de campanha** que passe do teto vira `aguardando_aprovacao`. Reduzir verba e pausar nunca são barrados.
+- Padrão de variação por ajuste caiu de 50% para **10%** no código e na migração.
+- A lógica de agir numa campanha saiu da rota e foi para `src/lib/trafego/executar.ts` (`executarAcao`): é o único caminho para mudar campanha, reutilizado depois pelo Diretor e pela autonomia. A rota `/api/trafego/acoes` continua igual por fora.
+- Migração `20261004020000_etapa5_orcamento_mensal.sql` (**não aplicada**).
+- Testes: `limites.test.ts` (freios diário, percentual e mensal, datas em horário de Brasília) e `comercial/contas.test.ts`.
+
+**Decisões tomadas sozinho**
+- A página Comercial usa as tabelas `trafego_vendas` e `trafego_metas`, que **já existiam** no banco, então funciona antes de qualquer migração. Só o campo "Orçamento mensal máximo" depende da migração; sem ela, a tela avisa e os freios usam o padrão de R$ 2.000.
+- Na migração, só troco 50% → 10% para quem ainda está no padrão antigo (valor exatamente 50). Quem já escolheu outro número não é alterado. **Atenção, Jackson:** depois de aplicar, aumentos acima de 10% de uma vez vão pedir confirmação.
+- "Gasto do mês" é o que a sincronização já gravou (até ontem). O mês vira no horário de Brasília.
+- Data de venda no futuro é recusada (quase sempre é erro de digitação).
+- Meta com campo vazio ou zero = sem meta naquela métrica.
+- Em investimento e CAC, o anel trata o alvo como **limite** (ficar abaixo é bom).
+
+**Como testar**
+1. Comercial → registrar uma venda (ex.: produto, 2 pessoas, um valor). Os cartões e as tabelas mudam na hora.
+2. "Definir metas do mês" → colocar uma meta de faturamento → o anel aparece com o percentual.
+3. Com campanhas sincronizadas: no Gerenciador, tentar um aumento que faça o mês passar do teto → aparece a pergunta de confirmação e o histórico registra `aguardando_aprovacao`.
+
+### Etapa 6 — Diretor v1: análise e recomendações (04/10/2026)
+
+**O que mudei**
+- Serviço `src/lib/diretor/`:
+  - `resumo.ts` monta um resumo só com dados do banco (tráfego dos últimos 14 dias e dos 14 anteriores, campanhas, site dos últimos 7 dias, vendas e metas do mês, limites). O que falta vira um aviso em texto, não um número.
+  - `claude.ts` chama a **Claude API** pelo SDK oficial (`@anthropic-ai/sdk`), modelo `claude-opus-5-5`, pedindo a resposta em JSON no formato de um schema zod (saída estruturada).
+  - `regras.ts` confere de novo cada recomendação: campanha tem de existir nos dados, mínimo de **7 dias** de dados (período de aprendizado), mínimo de **100 cliques**, e **5 conversões** para aumentar verba. O que não passa é descartado e listado na tela com o motivo.
+  - `gerar.ts` junta tudo e grava relatório + recomendações (status `proposta`).
+- Página **Diretor** (link no menu): relatório do dia, pontos de atenção, recomendações com **Aprovar / Recusar**, botão "Gerar relatório agora" (dono/admin, no máximo 1 a cada 10 minutos).
+- Cron diário `/api/diretor/cron` às 09h30 UTC (06h30 de Brasília), logo depois da sincronização. Protegido pelo mesmo `CRON_SECRET`.
+- Migração `20261004030000_etapa6_diretor.sql` (**não aplicada**): tabelas `diretor_relatorios` e `diretor_recomendacoes`, com RLS (leitura para membros, escrita só pelo servidor).
+- Variável nova `ANTHROPIC_API_KEY` no `.env.example`.
+- Testes em `src/lib/diretor/regras.test.ts`.
+
+**Decisões tomadas sozinho**
+- **Aprovar não executa nada nesta etapa** (como pede a Fase 5 da visão: "sem executar"). A execução com aprovação entra nas Etapas 9 e 10.
+- Sem `ANTHROPIC_API_KEY`, a página explica o passo a passo para criar a chave; sem a migração, avisa que falta aplicar. Nada quebra.
+- O resumo enviado à IA só tem números agregados. **Nenhum dado pessoal** (nem observação de venda) é enviado.
+- Não usei o recurso de "fallback" de modelo da API (é beta e eu não consegui confirmar que funciona junto com a saída estruturada). Se a IA recusar ou a resposta vier cortada, o relatório é registrado como erro com a explicação.
+- **Não cheguei a chamar a Claude API de verdade**: não posso ler o `.env.local` e não há chave no ambiente. O formato do pedido segue a documentação do SDK instalado (0.131.0) e compila; o primeiro teste real fica para o Jackson (está no roteiro).
+- Custo: cada relatório é uma chamada com poucos milhares de tokens. No modelo escolhido, a ordem de grandeza é de centavos de dólar por relatório; o valor exato aparece no console da Anthropic.
+- O plano Hobby da Vercel aceita cron 1x/dia; agora são dois crons (sincronização e Diretor). Se a Vercel recusar o segundo, a alternativa está em PENDENTE.
+
+**Como testar**
+1. Sem a chave: abrir Diretor → aparece a explicação do que falta.
+2. Aplicar a migração da Etapa 6, cadastrar `ANTHROPIC_API_KEY` na Vercel e clicar em "Gerar relatório agora".
+3. Conferir se os números citados batem com Tráfego, Site e Comercial. Aprovar uma recomendação e recusar outra.
+
+### Etapa 7 — Perfil da Empresa no Google e Search Console (04/10/2026)
+
+**O que mudei**
+- Conexões: nova seção **Presença no Google**, que reaproveita o app OAuth do workspace (o mesmo do Google Ads) e pede os escopos `business.manage` e `webmasters.readonly`. A autorização fica numa conexão separada (`google_presenca`), com o refresh token criptografado. Passo a passo e **aviso claro de que a Business Profile API exige pedido de acesso ao Google**.
+- `src/lib/presenca/google.ts`: leitura do perfil (informações), avaliações, desempenho (visualizações, cliques para o site, ligações, rotas) e do Search Console (consultas, páginas, cliques, impressões, posição). Escrita: responder avaliação e publicar post.
+- Página **Presença no Google** (link no menu): o dono escolhe qual perfil e qual propriedade do Search Console são do workspace; cartões e tabelas; rascunho de resposta/post; **fila de aprovações**.
+- **Nada é publicado no Google sem aprovação**: dono ou admin escrevem o rascunho (`aguardando_aprovacao`); **só o dono** clica em "Aprovar e publicar".
+- O Diretor passa a receber um bloco `presenca_google` no resumo e a sugerir melhorias de perfil (`perfil_google`) e de SEO/AEO (`seo`).
+- Migração `20261004040000_etapa7_presenca_google.sql` (**não aplicada**): conexão `google_presenca` e tabela `presenca_acoes` com RLS.
+- Testes em `src/lib/presenca/google.test.ts`.
+
+**Decisões tomadas sozinho**
+- Cada parte da tela falha sozinha: se o Google ainda não liberou o perfil, o Search Console continua aparecendo, e cada falha mostra o motivo em português (API não ativada, cota zero = falta o pedido de acesso, autorização vencida).
+- A leitura é **ao vivo** (não guardo cópia das avaliações no banco), para não armazenar nome de cliente.
+- Para o Diretor, as avaliações vão **sem o nome de quem escreveu** (só estrelas e o texto, que é público no Google, cortado em 300 caracteres). Isso ajusta o que escrevi na Etapa 6: o resumo continua sem nomes nem contatos.
+- O dono só pode escolher perfil e site que a conta autorizada realmente administra (conferido no Google na hora de salvar).
+- A IA **não** escreve respostas nem posts nesta etapa: o texto é de uma pessoa. Geração de texto fica no Creative Studio (Etapa 8).
+- Usei os endereços das APIs que conheço da documentação oficial (Account Management v1, Business Information v1, Performance v1, My Business v4 para avaliações e posts, Search Console v3). **Não consegui testar com conta real**: está no roteiro e em PENDENTE.
+
+**Como testar**
+1. Aplicar a migração da Etapa 7. Em Conexões → Presença no Google → Autorizar (precisa da Parte B do Google feita).
+2. Presença no Google → escolher a propriedade do Search Console → ver consultas e páginas.
+3. Se a Business Profile API já estiver liberada: escolher o perfil, escrever uma resposta a uma avaliação, conferir que ela fica "aguardando aprovação" e só publica depois do clique do dono.
+
+### Etapa 8 — Creative Studio e Learning Engine (04/10/2026)
+
+**O que mudei**
+- Página **Creative Studio** (link no menu), com cinco partes: Produtos, Pedir variações, Criativos, Experimentos (testes A/B) e Aprendizados.
+- **Produtos** são a única fonte de fatos para a IA (nome, descrição, preço opcional, fatos importantes, público).
+- `src/lib/criativos/gerar.ts`: pede à Claude API variações com título, descrição, chamada (CTA) e texto em **AIDA** e **PAS**, respeitando o tamanho de cada plataforma. Depois da IA o código confere: variação que cita **qualquer número que não está no cadastro** (preço, desconto, duração, nota) é barrada, assim como a que passa do tamanho.
+- Variações aprovadas na conferência são salvas como rascunho; a pessoa clica em "salvar" ou "descartar".
+- **Experimentos**: registra o teste (hipótese, criativo A e B, métrica, início) e, ao concluir, os resultados digitados por uma pessoa, o vencedor e a conclusão, que vira um **aprendizado**.
+- O **Diretor** agora recebe os aprendizados e os experimentos recentes no resumo e é instruído a não repetir o que já foi refutado.
+- Migração `20261004050000_etapa8_creative_learning.sql` (**não aplicada**): tabelas `produtos`, `criativos`, `hipoteses`, `experimentos`, `aprendizados`, com RLS (membros leem; dono/admin escrevem).
+- Testes em `src/lib/criativos/gerar.test.ts`.
+
+**Decisões tomadas sozinho**
+- Criei a tabela `produtos` (o plano não citava), porque "usar só dados cadastrados" precisa de um cadastro. A página Comercial continua aceitando o nome do produto digitado à mão; ligar as duas fica como melhoria futura.
+- A conferência de números é rígida de propósito: prefiro barrar uma variação boa a deixar passar um preço inventado. A tela informa quantas foram barradas.
+- Os resultados dos testes A/B são **digitados por uma pessoa** a partir da plataforma. A JUDITE não calcula o vencedor sozinha nesta etapa (as métricas por anúncio ainda não distinguem variações de um mesmo teste).
+- "Desativar" produto não apaga nada (o histórico de criativos e testes continua).
+- Não cheguei a chamar a Claude API de verdade (mesmo motivo da Etapa 6).
+
+**Como testar**
+1. Aplicar a migração da Etapa 8. Creative Studio → cadastrar um produto com preço e fatos.
+2. Com `ANTHROPIC_API_KEY`: "Gerar variações" → conferir que nenhum texto traz preço ou número que você não cadastrou.
+3. Registrar um experimento com dois criativos, concluir com resultados e ver a conclusão aparecer em Aprendizados.
+
+### Etapa 9 — Campaign Manager (04/10/2026)
+
+**O que mudei**
+- Página **Campanhas** (link no menu): "Pedir um rascunho ao Diretor" (IA) ou "Montar um rascunho à mão"; lista de rascunhos com os avisos dos freios; botões do dono: **Aprovar**, **Recusar** e, depois, **Aprovar ativação**.
+- Fluxo: rascunho (`aguardando_aprovacao`) → o **dono** aprova → campanha criada **PAUSADA** (`publicada_pausada`) → ativar é **outra aprovação** do dono (`ativa`).
+- `src/lib/campanhas/`: `rascunho.ts` (schema e conferência pelos freios: teto diário, orçamento do mês, criativos válidos), `diretor.ts` (a IA monta o rascunho com os dados reais, o produto e os criativos salvos; tudo passa pelo mesmo schema), `publicar.ts` (publicação pausada e ativação).
+- Provedores: novo método opcional `criarCampanhaPausada` na **Meta** (`status=PAUSED`) e no **TikTok** (`operation_status=DISABLE`).
+- **Tudo registrado em `trafego_acoes`**: o rascunho (`criar_campanha_pausada`, `aguardando_aprovacao`), a criação (`aplicada` ou `erro`) e a ativação.
+- Migração `20261004060000_etapa9_campaign_manager.sql` (**não aplicada**): tabela `campanha_rascunhos` com RLS.
+- Variável nova `JUDITE_PUBLICACAO_REAL`.
+- Testes em `src/lib/campanhas/rascunho.test.ts` (inclui "a campanha é sempre criada pausada").
+
+**Decisões tomadas sozinho**
+- **Modo simulado é o padrão.** Sem `JUDITE_PUBLICACAO_REAL=1` no servidor, aprovar e ativar acontecem só dentro da JUDITE (marcado como SIMULADA na tela e no histórico) e nenhuma API de plataforma é chamada. É assim que o fluxo deve ser testado amanhã.
+- **Só o dono** aprova, recusa e ativa (admin monta o rascunho).
+- No modo real, a JUDITE cria só a "casca" da campanha (nome, objetivo, orçamento), pausada. **Conjunto de anúncios (público) e anúncios (criativos) são finalizados na plataforma**, seguindo o rascunho. Criar conjuntos e anúncios pela API exige página, pixel e mídia, e eu não quis inventar esses campos.
+- **Google Ads não tem criação por aqui** nesta versão: a API exige vários campos obrigatórios que mudam entre versões e não pude confirmar. A tela diz isso e o rascunho serve de roteiro.
+- No modo real, a campanha criada entra no Gerenciador como pausada, e a ativação passa pelo mesmo `executarAcao` (freios do mês + histórico) das outras campanhas.
+- Não chamei nenhuma API de plataforma. O modo real **não foi testado**.
+
+**Como testar (modo simulado)**
+1. Aplicar as migrações das Etapas 8 e 9.
+2. Campanhas → "Montar um rascunho à mão" → salvar. Deve aparecer "aguardando aprovação" e, se o orçamento passar dos limites, os avisos em amarelo.
+3. Como dono: "Aprovar (simulado)" → vira "criada e pausada · SIMULADA". Depois "Aprovar ativação (simulado)" → "ativa · SIMULADA".
+4. Gerenciador → Histórico de ações: as três linhas aparecem (rascunho, criação e ativação), marcadas como SIMULAÇÃO.
+
+### Etapa 10 — Autonomia supervisionada (04/10/2026)
+
+**O que mudei**
+- Chave **"Autonomia da JUDITE"** por workspace, na página Diretor. **Desligada por padrão** (sem linha no banco = desligada). Só o **dono** liga, marcando uma caixa de "li as regras".
+- Botão vermelho **"Parar tudo"** (dono ou admin): desliga na hora. A rodada confere a chave de novo antes de cada ação, então parar vale mesmo no meio de uma execução.
+- `src/lib/diretor/autonomia.ts`, com regras **determinísticas (sem IA)**:
+  - **pausar** campanha ativa com R$ 100 ou mais de gasto em 14 dias e zero conversões, depois de 7 dias de dados e 100 cliques;
+  - **reduzir 10%** a verba de campanha com custo por conversão 2x acima da média da plataforma;
+  - **aumentar até 10%** a verba de campanha com custo por conversão até 70% da média e pelo menos 5 conversões.
+- Toda ação sai por `executarAcao` com origem `automacao`: os freios de `limites.ts` valem do mesmo jeito, e o que passa de qualquer limite (teto diário, % por ajuste, orçamento do mês) **não é aplicado**, fica `aguardando_aprovacao`.
+- Roda no cron diário, depois do relatório. Funciona mesmo sem a chave da IA.
+- **Visível no histórico**: a página Diretor lista as últimas ações da automação, e o Histórico de ações do Gerenciador ganhou a coluna "Quem" (pessoa ou JUDITE).
+- Aprovar uma recomendação de verba do Diretor agora **aplica** a mudança (pelo mesmo `executarAcao`, com o clique humano valendo como confirmação) e a recomendação vira `executada`.
+- Migração `20261004070000_etapa10_autonomia.sql` (**não aplicada**).
+- Testes em `src/lib/diretor/autonomia.test.ts` (12 casos).
+
+**Decisões tomadas sozinho**
+- **A autonomia não pausa por "zero conversões" quando a plataforma não está medindo conversão nenhuma.** No Guia Lençóis a venda acontece no WhatsApp; se o pixel não registra compra, todas as campanhas teriam "zero conversões" e seriam pausadas por engano. Só pauso quando alguma outra campanha da mesma plataforma converteu (sinal de que a medição funciona).
+- No máximo 3 ações por dia por workspace, e nunca na mesma campanha duas vezes em 7 dias (período de aprendizado).
+- A autonomia **nunca** cria campanha, **nunca** ativa campanha e **nunca** publica no Perfil da Empresa. Só pausa, reduz e aumenta dentro dos limites.
+- A IA não decide ações automáticas: ela só recomenda. As ações automáticas vêm de regras fixas e testadas.
+- Não testei com plataforma real. A autonomia só age se houver conexão, campanhas sincronizadas e a chave ligada.
+
+**Como testar**
+1. Aplicar a migração da Etapa 10. Diretor → seção "Autonomia da JUDITE": deve aparecer **Desligada**.
+2. Como dono: marcar a caixa e "Ligar autonomia" → fica verde e aparece o botão "Parar tudo". Clicar em "Parar tudo" → volta a desligada.
+3. **Recomendo deixar desligada** até as plataformas estarem conectadas e você ter acompanhado alguns relatórios.
+
+## Resumo final do modo autônomo (04/10/2026)
+
+**Situação:** as 10 etapas do plano foram implementadas, na ordem, na branch `desenvolvimento`
+(um commit por etapa, todos enviados ao GitHub). `npm run lint` e `npm run build` passam; `npx vitest run`
+passa com 70 testes em 11 arquivos. Nada foi para a `main`, nenhuma migração foi aplicada e nenhuma API de
+plataforma foi chamada com credenciais.
+
+| Etapa | Entrega | Critério "pronto quando" |
+|---|---|---|
+| 1 | Diagnóstico da aba Site, modo de teste e "última visita" | Cumprido: a coleta já funciona (causa documentada). |
+| 2 | Windsor removido; provedor nativo da Meta por workspace | Cumprido no código; **não testado com conta real**. |
+| 3 | Google Ads nativo | Cumprido no código; depende do developer token; não testado com conta real. |
+| 4 | TikTok Ads (conexão + provedor + terceira plataforma) | Cumprido no código; precisa da migração 1 e do app aprovado. |
+| 5 | Comercial, metas, ROAS real, CAC e freio mensal | Cumprido; a página funciona sem migração, o limite mensal precisa da migração 2. |
+| 6 | Diretor v1 | Cumprido no código; **a chamada real à Claude API não foi testada** (sem chave). |
+| 7 | Presença no Google | Cumprido no código; não testado com conta real. |
+| 8 | Creative Studio e Learning Engine | Cumprido no código; geração real não testada (sem chave). |
+| 9 | Campaign Manager | Cumprido em modo simulado (o que o plano pedia). Modo real não testado. |
+| 10 | Autonomia supervisionada | Cumprido: regras cobertas por testes e visíveis no histórico. |
+
+**O que é mais importante saber**
+1. O maior risco é o do item "não testado com conta real": as integrações foram escritas com cuidado, mas só o
+   primeiro uso com credenciais vai confirmar cada campo. Os erros das plataformas aparecem em português na tela
+   e no histórico, o que deve facilitar os ajustes.
+2. Tudo o que mexe em dinheiro passa por um único caminho (`src/lib/trafego/executar.ts`) e pelos freios de
+   `src/lib/trafego/limites.ts`. A automação nunca confirma sozinha acima de um limite.
+3. Padrões seguros escolhidos: autonomia desligada, publicação de campanha em modo simulado, publicação no Perfil
+   da Empresa só com aprovação do dono, variação por ajuste em 10%.
+4. Li o banco de produção **só com `select`** duas vezes: para o diagnóstico da aba Site e para conferir os nomes
+   das restrições que as migrações alteram.
+
+O que falta fazer (migrações, variáveis, liberações e o roteiro de testes) está em `docs/PENDENTE.md`.
+
+## IA pelo Google Gemini (04/10/2026)
+
+**O que mudou**
+- Novo módulo `src/lib/ia/` (substitui `src/lib/diretor/claude.ts`): `index.ts` exporta `pedirJson`, `iaConfigurada`,
+  `ErroIA` e `RespostaIA` com a mesma assinatura de antes. Todos os usos (Diretor, Creative Studio, Campaign Manager,
+  cron e páginas) passaram a importar de `@/lib/ia`.
+- `provedor.ts`: a variável `IA_PROVEDOR` (`gemini` ou `anthropic`) escolhe o provedor. Vazia ou com valor
+  desconhecido: Gemini se `GEMINI_API_KEY` existir, senão Anthropic.
+- `gemini.ts`: API REST oficial (`POST .../v1beta/models/gemini-3.8-flash:generateContent`) com `fetch`, sem SDK novo.
+  A chave vai no cabeçalho `x-goog-api-key`. A saída é pedida com `responseMimeType: application/json` +
+  `responseJsonSchema` (JSON Schema gerado por `z.toJSONSchema`) e validada de novo com o zod.
+- `anthropic.ts`: o código que já existia, agora com o modelo `claude-sonnet-5-5` (mais barato que o Opus).
+- Telas: as mensagens "Falta a chave da IA" citam a variável do provedor escolhido; o passo a passo da página
+  Diretor mostra o caminho do Gemini (ou o da Anthropic, se `IA_PROVEDOR=anthropic`).
+
+**Decisões**
+- Documentação consultada em ai.google.dev (modelos, preços, structured output, referência do `generateContent`):
+  `gemini-3.8-flash` é o Flash estável mais recente e tem cota grátis.
+- Sem chave nenhuma e sem `IA_PROVEDOR`, a regra pedida escolhe "anthropic", mas as telas orientam a criar a
+  `GEMINI_API_KEY`, que é o caminho grátis.
+- Qualquer `finishReason` diferente de `STOP`/`MAX_TOKENS` é tratado como bloqueio de segurança.
+- A mensagem de erro 400 do Google é mostrada cortada em 200 caracteres e com a chave mascarada, por garantia.
+
+**Limitação:** a chamada real ao Gemini não foi testada (sem chave no ambiente). Os testes usam `fetch` simulado.
+
+**Como testar:** cadastrar `GEMINI_API_KEY` na Vercel → Redeploy → Diretor → "Gerar relatório agora"; depois
+Creative Studio → "Gerar variações" e Campanhas → "Pedir rascunho".
+
+## Diretor de Tráfego: propostas automáticas e fila de aprovação (04/10/2026)
+
+**Pedido do Jackson:** um espaço no site em que a JUDITE age como diretora de tráfego autônoma, inclusive gerando
+campanhas, e ele avalia.
+
+**O que mudou**
+- Página nova `/painel/[workspaceId]/diretor-trafego` (no menu, "Diretor de Tráfego"). Mostra a situação (propostas,
+  autonomia, modo simulado/real), a fila **Para você avaliar** e **O que a JUDITE fez sozinha**.
+- A fila junta: campanhas novas propostas (aprovar cria PAUSADA), campanhas pausadas esperando ativação, ações que a
+  autonomia deixou `aguardando_aprovacao` e recomendações de verba do relatório. Cada item tem Aprovar e Recusar/Dispensar.
+- `src/lib/campanhas/propor.ts`: a JUDITE escolhe sozinha um produto (regra fixa, testada) e monta o rascunho com a IA.
+  Roda no cron diário, depois do relatório, e pelo botão "Pedir uma campanha nova agora".
+- `src/lib/campanhas/gravar.ts`: o código de montar e gravar rascunho saiu de `campanhas/actions.ts` para ser reaproveitado.
+- Ação `decidirAcaoPendente`: aprovar aplica pelo mesmo caminho do Gerenciador (`executarAcao`, com os freios).
+- Migração `20261005010000_diretor_trafego_aprovacoes.sql` (NÃO aplicada): status `aprovada` e `dispensada` em `trafego_acoes`.
+
+**Decisões**
+- Propor campanha **não depende da chave de autonomia**: é só um rascunho, como as recomendações do relatório. Nada é
+  criado nem gasto sem a aprovação do dono, a campanha nasce pausada e ativar continua sendo outra aprovação.
+- Freios da proposta: no máximo 1 por dia pelo cron, no máximo 2 esperando avaliação, não repete produto que já tem
+  campanha em andamento nem produto recusado nos últimos 14 dias. Sem produto cadastrado, não propõe.
+- Aprovar/ativar campanha: só o dono (como já era). Aprovar ação de verba: dono ou admin (como no Gerenciador).
+- A fila mostra só os últimos 14 dias de ações e recomendações, para não aprovar decisão baseada em dado velho.
+- Cada proposta diária é mais uma chamada à IA por workspace (duas por dia com o relatório).
+
+**Limitação:** a geração real não foi testada (sem chave de IA no ambiente). O nome da restrição que a migração troca
+(`trafego_acoes_status_check`) é o padrão do Postgres; não conferi no banco.
+
+**Como testar:** item 12 do roteiro em `docs/PENDENTE.md`.
+
+## CMO autônoma: motor de decisão, três modos de criação, estados e níveis de autonomia (05/10/2026)
+
+**Pedido do Jackson:** evoluir a JUDITE para uma Diretora de Marketing (AI CMO): encontrar a oportunidade, montar estratégia,
+campanha, anúncios, público e orçamento, pôr na fila de aprovação e, com autorização, executar. Sem fundir com o LUNIKO.
+
+**O que mudou**
+- **Motor da CMO em `src/lib/cmo/`**, com as etapas separadas e observáveis: coleta (`servico.ts`) → análise e decisão
+  (`oportunidades.ts`, regras fixas) → orçamento (`financeiro.ts`, regras fixas) → geração pela IA (`agentes.ts`, `gerar.ts`) →
+  conferência por código (`plano.ts`) → fila. A lógica recebe banco e IA por dependência, então é testada sem rede.
+- **Três modos na página Diretor de Tráfego:** "Criar automaticamente" (só o produto), "Quero ideias" (até 3 ideias explicadas,
+  cada uma com "Gerar campanha") e "Criar campanha" (perguntas mínimas, todas opcionais). A proposta diária continua.
+- **Plano explicável** gravado em `campanha_rascunhos.plano`: oportunidade e motivo, estratégia, funil, segmentação, hipótese,
+  métrica principal, impacto esperado, risco, confiança, dados utilizados, anúncios (AIDA/PAS), palavras-chave (Google Ads),
+  ideias de criativo, primeiro teste A/B, conta do orçamento e alternativas consideradas. A tela mostra em "Ver detalhes".
+- **Fila:** cada item diz o que ela quer fazer, por quê, impacto, orçamento, risco e confiança; ações Aprovar, Recusar,
+  Ver detalhes e Editar (nome, orçamento e público, passando pelos freios de novo).
+- **Máquina de estados** (`estados.ts`): rascunho → aguardando aprovação → criada e pausada → ativa → aprendizado → otimizando,
+  com pausada, pausada pela JUDITE, concluída, recusada e erro. Transição inválida é recusada; toda mudança vira linha em
+  `campanha_eventos`. Novas ações: pausar, retomar, concluir.
+- **Níveis de autonomia 0 a 4** (`niveis.ts`). 0 manual, 1 assistido (padrão), 2 controlada. 3 e 4 existem no desenho, mas a
+  aplicação não deixa ligar, nem gravando direto no banco. "Parar tudo" continua derrubando para o nível 1 na hora.
+- **Governança nova** em Limites da IA: redução máxima por vez, teto do mês por canal e bloqueio de canal. Valem para as
+  propostas, para o Gerenciador e para a autonomia (`executar.ts`).
+- **Ciclo diário** (`ciclo.ts`): confere o nível, abre o registro do dia (índice único = idempotente), monitora as campanhas
+  ligadas, gera no máximo uma proposta e grava cada etapa em `cmo_execucoes`.
+- **Ponte com o LUNIKO** (`src/lib/luniko/eventos.ts` + `docs/CONTRATO-LUNIKO.md`): webhook assinado a cada mudança de estado,
+  desligado por padrão. Nenhum código ou banco compartilhado.
+- Migração `20261005020000_cmo_autonoma.sql` (NÃO aplicada).
+- Removidos `src/lib/campanhas/propor.ts` e `src/lib/campanhas/diretor.ts`: o "Pedir rascunho" da página Campanhas usa o mesmo motor.
+
+**Decisões**
+- **A IA não decide dinheiro nem oportunidade.** Qual campanha propor e quanto gastar saem de regras fixas sobre dados reais;
+  a IA escreve o plano. O que a pessoa pediu e os limites sempre vencem a resposta da IA, e cada correção vira um aviso na tela.
+- **Um pedido de IA por campanha.** Os especialistas (tráfego, audiência, copy, criativo, analytics, CMO) têm instruções e campos
+  separados em `agentes.ts`, mas são consultados juntos para caber na cota grátis. Separar um agente é trocar o modo, não o desenho.
+- Confiança nunca passa da calculada pelos dados (histórico no canal, vendas do produto, cliques no WhatsApp).
+- Anúncio com número fora do cadastro do produto é descartado (mesma regra do Creative Studio); os aceitos viram rascunho lá.
+- Antes da migração nº 9 o fluxo antigo continua funcionando: a proposta é gravada sem o plano, com um aviso dizendo o que falta.
+- Campanha nova e ativação continuam exigindo aprovação do dono em todos os níveis.
+- A redução máxima por vez (padrão 50%) vale também para pessoas no Gerenciador: cortes maiores pedem confirmação.
+
+**Limitações reais**
+- Geração real pela IA não testada (sem chave no ambiente). Google Ads não cria campanha pela JUDITE; Meta e TikTok criam só
+  a casca pausada. Tendências, sazonalidade e concorrência não têm fonte de dados: a análise usa campanhas, site e vendas.
+- O caminho de volta LUNIKO → JUDITE e o reenvio de eventos que falharam não existem ainda.
+
+**Como testar:** item 12 do roteiro em `docs/PENDENTE.md`.
+
+## Conexões no estilo "Conectar e pronto": app OAuth da JUDITE por plataforma (06/10/2026)
+
+**Pedido do Jackson:** um app OAuth da própria JUDITE por plataforma; o dono só clica em Conectar, faz login e escolhe a conta.
+
+**O que mudou**
+- `src/lib/conexoes/app.ts`: credenciais do app em variáveis de ambiente (Google, Meta, TikTok), com volta para o valor salvo
+  por workspace quando a variável não existe. A conexão guarda de qual app o token veio (`app_origem`), porque um token só
+  funciona com o app que o emitiu.
+- `src/lib/conexoes/oauth.ts`: state em cookie httpOnly com comparação em tempo constante e PKCE (S256).
+- `src/lib/conexoes/plataformas.ts`: troca de código por token, listagem de contas, `appsecret_proof`, revogação e validade.
+- **Google Ads:** PKCE, `access_type=offline`, escopo só `adwords`. Na volta lista as contas diretas e as contas-clientes de
+  uma MCC; o dono escolhe e ficam salvos `cliente` e `gerente` (login_customer_id). `invalid_grant` marca "precisa reconectar".
+- **Meta (novo):** rotas `/api/conexoes/meta/iniciar` e `/callback`, token de longa duração, `/me/adaccounts`, `appsecret_proof`
+  em todas as chamadas, validade guardada e aviso 7 dias antes. O token de usuário do sistema virou opção avançada.
+- **TikTok:** usa o app da plataforma e lista os anunciantes com nome.
+- **Desconectar:** revoga no Google e na Meta e apaga os tokens.
+- **Página Conexões** refeita: um cartão por plataforma, "Trocar conta", "Desconectar", "Opções avançadas" recolhido e a caixa
+  "Configuração do administrador" (só o dono) com as URLs de retorno e os nomes das variáveis que faltam.
+- `docs/CONEXOES-OAUTH.md`: passo a passo para iniciante. Sem migração.
+
+**Decisões**
+- `redirect_uri` sai de `SITE_URL`. Sem ela, cai no endereço do pedido (para a prévia funcionar) e a caixa do administrador avisa.
+- A Meta não tem PKCE no diálogo de login; a proteção é o state mais a chave secreta do app na troca do código.
+- A troca de código da Meta e a lista de anunciantes do TikTok são GET com os dados na consulta, como as plataformas
+  documentam. Saem só do servidor e nunca são registradas.
+- `appsecret_proof` só é enviado para token emitido pelo app da JUDITE; token de usuário do sistema veio de outro app.
+- No Google, revogar um token derruba a autorização inteira do e-mail. Se Google Ads e Presença estão conectados, desconectar
+  um só não revoga; a tela explica.
+- Reconectar a Meta mantém a conta escolhida só se o novo login também alcança essa conta.
+- A escolha de conta só aceita o que veio na lista da plataforma; conta já ligada a outro workspace é recusada, como antes.
+
+**Limitação:** nada foi testado com conta real (não há credenciais no ambiente).
+
+**Como testar:** `docs/CONEXOES-OAUTH.md` e o item 6 do roteiro em `docs/PENDENTE.md`.
+
+## Windsor.ai como provedor opcional por workspace (07/10/2026)
+
+**O que mudou**
+- `src/lib/windsor/api.ts`: leitura pela API REST da Windsor. A API só aceita a chave na URL, então a URL nunca entra em log
+  nem em erro, e todo texto que volta passa por `semChave()` (a Windsor repete a chave na resposta quando a recusa).
+- `src/lib/windsor/mcp.ts`: cliente do servidor MCP da Windsor (`@modelcontextprotocol/sdk`, Streamable HTTP), com a chave no
+  cabeçalho `Authorization: Bearer`. Usado para listar as contas (`get_connectors`) e para as ações (`execute_action`).
+- `src/lib/anuncios/windsor.ts`: `ProvedorAnuncios` da Windsor. Leitura de métricas e campanhas (Google Ads, Meta, TikTok) e
+  escrita: pausar, ativar, orçamento diário e, só na Meta, criar campanha (sempre pausada).
+- `src/lib/anuncios/provedor.ts`: `provedorDoWorkspace` olha primeiro a fonte escolhida pelo dono. Padrão: conexão própria.
+- `src/lib/windsor/conexao.ts`: o que fica guardado (contas, escolhidas, fonte por plataforma) e o formato único das contas.
+- Página **Conexões**: seção "Windsor.ai (opcional)" com chave (testar e salvar, atualizar contas, apagar) e o seletor por
+  plataforma. Dashboard e Gerenciador mostram a linha "Fonte dos dados e das ações".
+- **Presença no Google**: leitura pela Windsor (`src/lib/presenca/windsor.ts`). Publicar continua pela conexão própria, com aprovação.
+- Migração `20261007010000_windsor_conexao.sql` (**não aplicada**): aceita `windsor` em `conexoes.provedor`.
+- 27 testes novos em `src/lib/anuncios/windsor.test.ts` (187 no total).
+
+**Decisões**
+- **Escrita pela Windsor.** A documentação diz que o servidor MCP aceita a chave de API como Bearer, sem login interativo, e o
+  servidor confirmou o esquema Bearer nos testes sem chave. Por isso as ações foram implementadas pelo MCP.
+- `executar.ts` e `limites.ts` **não foram alterados**: a Windsor é só mais um provedor atrás dos mesmos freios.
+- Fonte escolhida = Windsor e algo falta (chave ou conta): a JUDITE avisa o que falta; não cai escondido na conexão própria.
+- As contas são gravadas no formato dos provedores nativos (`act_123`, `123-456-7890`), para trocar a fonte sem duplicar
+  métricas. A trava "uma conta de anúncios não pertence a dois workspaces" vale também para as contas da Windsor.
+- Criar campanha pela Windsor só na Meta (objetivos com equivalente direto). No Google Ads a ação da Windsor cria campanha de
+  Pesquisa ou Display sem relação com o objetivo do rascunho, então ficou de fora, como no provedor nativo.
+- TikTok pela Windsor aceita só orçamento inteiro: a JUDITE recusa valor com centavos em vez de arredondar o que foi aprovado.
+- Sem variável global: a chave é de cada workspace, criptografada com `src/lib/cripto.ts`. Só o dono salva, testa ou apaga.
+- `docs/VISAO.md` atualizado: a regra "sem Windsor" virou "padrão é a conexão própria; Windsor é opção por workspace".
+
+**Limitação:** nada foi testado com uma chave real da Windsor. Roteiro no item 6b de `docs/PENDENTE.md`.

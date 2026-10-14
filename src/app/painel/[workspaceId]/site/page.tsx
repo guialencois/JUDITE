@@ -7,7 +7,7 @@
 import Link from "next/link";
 import { podeAgir } from "@/lib/trafego/acesso";
 import { urlDoSite } from "@/lib/conexoes/config";
-import { agrupar, canal, inicioDoPeriodo, porDia, totais, type EventoSite, type Linha } from "@/lib/site/resumo";
+import { agrupar, canal, ehTeste, haQuanto, inicioDoPeriodo, NOME_TESTE, porDia, totais, type EventoSite, type Linha } from "@/lib/site/resumo";
 import { carregarWorkspace } from "../carregar";
 import { cadastrarSite, removerSite } from "./actions";
 
@@ -99,7 +99,18 @@ export default async function SitePage(props: PageProps<"/painel/[workspaceId]/s
     .gte("ocorrido_em", desde)
     .order("ocorrido_em", { ascending: true })
     .limit(50000);
-  const eventos = (data ?? []) as EventoSite[];
+  const eventos = ((data ?? []) as EventoSite[]).filter((e) => !ehTeste(e));
+
+  // Indicadores de "está chegando?": independem do período escolhido.
+  const [{ data: ultimaVisita }, { data: ultimoTeste }] = await Promise.all([
+    supabase.from("site_eventos").select("ocorrido_em").eq("site_id", site.id).eq("tipo", "pageview")
+      .order("ocorrido_em", { ascending: false }).limit(1).maybeSingle(),
+    supabase.from("site_eventos").select("ocorrido_em").eq("site_id", site.id).eq("tipo", "evento").eq("nome", NOME_TESTE)
+      .order("ocorrido_em", { ascending: false }).limit(1).maybeSingle(),
+  ]);
+  const quando = (iso: string) =>
+    `${new Date(iso).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" })} (${haQuanto(iso)})`;
+  const enderecoTeste = `https://${site.dominio}/?judite_teste=1`;
 
   const t = totais(eventos);
   const serie = porDia(eventos, Math.max(dias, 7));
@@ -133,7 +144,22 @@ export default async function SitePage(props: PageProps<"/painel/[workspaceId]/s
         </div>
       </header>
 
-      {!eventos.length && (
+      <section className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-3 text-sm">
+        <p>
+          <span className={"mr-2 inline-block h-2 w-2 rounded-full " + (ultimaVisita ? "bg-emerald-400" : "bg-zinc-600")} aria-hidden="true" />
+          <span className="text-zinc-400">Última visita recebida: </span>
+          <span className="text-zinc-100">{ultimaVisita ? quando(ultimaVisita.ocorrido_em as string) : "nenhuma até agora"}</span>
+        </p>
+        <p>
+          <span className="text-zinc-400">Último teste: </span>
+          <span className="text-zinc-100">{ultimoTeste ? quando(ultimoTeste.ocorrido_em as string) : "nenhum"}</span>
+        </p>
+        <p className="text-xs text-zinc-500">
+          Para testar, abra <code className={codigo}>{enderecoTeste}</code>: aparece uma faixa no canto do site dizendo se a JUDITE recebeu.
+        </p>
+      </section>
+
+      {!ultimaVisita && (
         <div className="space-y-2 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100">
           <p className="font-medium">Ainda não chegou nenhuma visita. Instale o rastreador no site:</p>
           <p>Cole esta linha dentro do <code className={codigo}>&lt;head&gt;</code> de todas as páginas do {site.dominio}:</p>

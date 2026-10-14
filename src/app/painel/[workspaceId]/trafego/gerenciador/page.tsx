@@ -3,10 +3,13 @@
  * Só dono e admin podem mudar campanhas; membros apenas veem.
  */
 
+import { AvisoConexoes } from "@/components/trafego/AvisoConexoes";
+import { FonteDosDados } from "@/components/trafego/FonteDosDados";
 import { TabelaCampanhas, type LinhaCampanhaTabela } from "@/components/trafego/TabelaCampanhas";
+import { situacaoDasConexoes } from "@/lib/conexoes/status";
 import { podeAgir } from "@/lib/trafego/acesso";
 import { brl, derivar, somar } from "@/lib/trafego/metricas";
-import { dia, metricaDoBanco, NOME_PLATAFORMA, type LinhaMetrica, type Plataforma } from "@/lib/trafego/tipos";
+import { dia, metricaDoBanco, NOME_PLATAFORMA, PLATAFORMAS, type LinhaMetrica, type Plataforma } from "@/lib/trafego/tipos";
 import { carregarWorkspace } from "../../carregar";
 
 export const dynamic = "force-dynamic";
@@ -28,10 +31,11 @@ export default async function PaginaGerenciador(props: PageProps<"/painel/[works
   const [{ data: campanhas }, { data: metricas }, { data: acoes }, { data: cfg }] = await Promise.all([
     supabase.from("trafego_campanhas").select("*").eq("workspace_id", workspace.id).order("nome"),
     supabase.from("trafego_metricas_dia").select("*").eq("workspace_id", workspace.id).gte("data", de).lte("data", ate),
-    supabase.from("trafego_acoes").select("*").eq("workspace_id", workspace.id).order("criado_em", { ascending: false }).limit(20),
+    supabase.from("trafego_acoes").select("*").eq("workspace_id", workspace.id).order("criado_em", { ascending: false }).limit(40),
     supabase.from("trafego_config").select("valor").eq("workspace_id", workspace.id).eq("chave", "custos_percent").maybeSingle(),
   ]);
   const custos = Number(cfg?.valor ?? 25);
+  const { semConexao, fontes } = await situacaoDasConexoes(supabase, workspace.id);
 
   const porCampanha = new Map<string, LinhaMetrica[]>();
   for (const r of metricas ?? []) {
@@ -68,14 +72,18 @@ export default async function PaginaGerenciador(props: PageProps<"/painel/[works
         </p>
       </header>
 
+      <AvisoConexoes workspaceId={workspace.id} faltando={semConexao} total={PLATAFORMAS.length} />
+      <FonteDosDados workspaceId={workspace.id} fontes={fontes} />
+
       <TabelaCampanhas workspaceId={workspace.id} podeAgir={podeAgir(papel)} linhas={linhas} />
 
       <h2 className="mb-3 mt-6 font-serif text-lg text-zinc-100">Histórico de ações</h2>
       <div className="overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-900/60 p-4">
-        <table className="w-full min-w-[720px] text-sm">
+        <table className="w-full min-w-[820px] text-sm">
           <thead>
             <tr className="text-left text-xs text-zinc-500">
               <th className="py-2 pr-2 font-medium">Quando</th>
+              <th className="py-2 pr-2 font-medium">Quem</th>
               <th className="py-2 pr-2 font-medium">Plataforma</th>
               <th className="py-2 pr-2 font-medium">Entidade</th>
               <th className="py-2 pr-2 font-medium">Ação</th>
@@ -87,6 +95,7 @@ export default async function PaginaGerenciador(props: PageProps<"/painel/[works
             {(acoes ?? []).map((a) => (
               <tr key={a.id} className="border-t border-zinc-800">
                 <td className="py-2 pr-2 text-zinc-400">{new Date(a.criado_em).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}</td>
+                <td className={"py-2 pr-2 " + (a.origem === "automacao" ? "text-sky-300" : "text-zinc-400")}>{a.origem === "automacao" ? "JUDITE (automação)" : "pessoa"}</td>
                 <td className="py-2 pr-2 text-zinc-400">{NOME_PLATAFORMA[a.plataforma as Plataforma] ?? a.plataforma}</td>
                 <td className="max-w-[220px] truncate py-2 pr-2 text-zinc-300">{a.entidade_nome ?? a.entidade_id}</td>
                 <td className="py-2 pr-2 text-zinc-300">{a.acao}</td>
@@ -95,11 +104,11 @@ export default async function PaginaGerenciador(props: PageProps<"/painel/[works
                     ? brl(a.valor_antes === null ? null : Number(a.valor_antes)) + " para " + brl(Number(a.valor_depois ?? 0))
                     : (a.valor_antes ?? "-") + " para " + (a.valor_depois ?? "-")}
                 </td>
-                <td className={"py-2 " + (STATUS_COR[a.status] ?? "text-zinc-400")}>{a.status}</td>
+                <td className={"py-2 " + (STATUS_COR[a.status] ?? "text-zinc-400")} title={a.resultado ?? undefined}>{a.status}</td>
               </tr>
             ))}
             {!(acoes ?? []).length && (
-              <tr><td colSpan={6} className="py-6 text-center text-sm text-zinc-500">Nada mudado pelo painel ainda.</td></tr>
+              <tr><td colSpan={7} className="py-6 text-center text-sm text-zinc-500">Nada mudado pelo painel ainda.</td></tr>
             )}
           </tbody>
         </table>

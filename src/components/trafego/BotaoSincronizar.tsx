@@ -20,10 +20,13 @@ export function BotaoSincronizar({ workspaceId, ultimaSync }: { workspaceId: str
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ workspaceId, dias: 60 }),
       });
-      if (!r.ok) {
-        const corpo = await r.json().catch(() => ({}));
-        throw new Error(corpo?.erro ?? "Falha ao sincronizar.");
-      }
+      const corpo = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(corpo?.erro ?? "Falha ao sincronizar.");
+      // 207 = alguma plataforma falhou (ex.: sem conexão). Mostra o motivo em vez de fingir sucesso.
+      const falhas = Array.isArray(corpo?.resumo)
+        ? (corpo.resumo as { erro?: string }[]).map((x) => x.erro).filter((x): x is string => Boolean(x))
+        : [];
+      if (falhas.length) setErro(falhas.join(" "));
       iniciar(() => router.refresh());
     } catch (e) {
       setErro(e instanceof Error ? e.message : String(e));

@@ -1,6 +1,13 @@
 {
   "framework": "nextjs",
   "crons": [
-    { "path": "/api/trafego/sync", "schedule": "0 9 * * *" }
+    {
+      "path": "/api/trafego/sync",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/diretor/cron",
+      "schedule": "30 9 * * *"
+    }
   ]
 }

@@ -15,6 +15,21 @@ export type EventoSite = {
   visitante: string;
 };
 
+/** Evento gravado pelo modo de teste (?judite_teste=1 no site). Não entra em nenhuma conta. */
+export const NOME_TESTE = "judite_teste";
+export const ehTeste = (e: { tipo: string; nome: string | null }) => e.tipo === "evento" && e.nome === NOME_TESTE;
+
+/** "há 5 min", "há 3 h", "há 2 dias": para o indicador de última visita recebida. */
+export function haQuanto(iso: string, agora = Date.now()): string {
+  const minutos = Math.max(0, Math.round((agora - new Date(iso).getTime()) / 60000));
+  if (minutos < 1) return "agora mesmo";
+  if (minutos < 60) return `há ${minutos} min`;
+  const horas = Math.round(minutos / 60);
+  if (horas < 24) return `há ${horas} h`;
+  const dias = Math.round(horas / 24);
+  return `há ${dias} ${dias === 1 ? "dia" : "dias"}`;
+}
+
 /** Início do período (agora menos N dias), em ISO, para filtrar os eventos. */
 export const inicioDoPeriodo = (dias: number): string => new Date(Date.now() - dias * 864e5).toISOString();
 

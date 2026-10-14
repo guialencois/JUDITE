@@ -17,15 +17,44 @@
   var anuncio = q.get("gclid") || q.get("gbraid") || q.get("wbraid") ? "google"
     : q.get("fbclid") ? "meta" : q.get("ttclid") ? "tiktok" : null;
 
-  function enviar(tipo, nome) {
-    var corpo = JSON.stringify({
+  function montar(tipo, nome, teste) {
+    var dados = {
       k: chave, t: tipo, n: nome || null,
       p: location.pathname.slice(0, 300),
       r: document.referrer || null,
       u: utm, a: anuncio, w: window.innerWidth || 0
-    });
+    };
+    if (teste) dados.x = 1;
+    return JSON.stringify(dados);
+  }
+
+  function enviar(tipo, nome) {
+    var corpo = montar(tipo, nome, false);
     if (navigator.sendBeacon && navigator.sendBeacon(destino, corpo)) return;
     fetch(destino, { method: "POST", body: corpo, keepalive: true, mode: "no-cors" }).catch(function () {});
+  }
+
+  // Modo de teste: abra o site com ?judite_teste=1. Envia um evento marcado como teste
+  // (não entra nas contas) e mostra na tela se a JUDITE recebeu, e o motivo quando não recebeu.
+  if (q.get("judite_teste") === "1") {
+    var avisar = function (ok, texto) {
+      var faixa = document.createElement("div");
+      faixa.textContent = "JUDITE: " + texto;
+      faixa.style.cssText = "position:fixed;left:12px;bottom:12px;z-index:2147483647;padding:10px 14px;border-radius:8px;" +
+        "font:14px/1.4 Arial,sans-serif;color:#fff;max-width:90vw;background:" + (ok ? "#047857" : "#b91c1c");
+      (document.body || document.documentElement).appendChild(faixa);
+      if (window.console) console.log("[JUDITE] " + texto);
+    };
+    var testar = function () {
+      fetch(destino, { method: "POST", body: montar("evento", "judite_teste", true) })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          avisar(Boolean(j && j.ok), j && j.ok ? "teste recebido. O rastreador está funcionando." : "teste recusado. Motivo: " + ((j && j.motivo) || "desconhecido"));
+        })
+        .catch(function () { avisar(false, "não foi possível falar com a JUDITE (bloqueio do navegador, de extensão ou da rede)."); });
+    };
+    if (document.body) testar(); else document.addEventListener("DOMContentLoaded", testar);
+    return;
   }
 
   enviar("pageview");

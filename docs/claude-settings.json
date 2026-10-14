@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": [
+      "Bash(npm run lint)",
+      "Bash(npm run build)",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx vitest:*)",
+      "Bash(git status)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git switch:*)",
+      "Bash(git checkout -b desenvolvimento)",
+      "Bash(git push -u origin desenvolvimento)",
+      "Bash(git push origin desenvolvimento)",
+      "Bash(git pull origin desenvolvimento)"
+    ],
+    "deny": [
+      "Bash(git push origin main)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git merge:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(rm -rf:*)",
+      "Bash(Remove-Item:*)",
+      "Bash(supabase db push:*)",
+      "Bash(vercel:*)",
+      "Read(./.env.local)",
+      "Read(./.env)"
+    ]
+  }
+}
